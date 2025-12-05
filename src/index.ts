@@ -346,20 +346,20 @@ async function run(): Promise<void> {
       repo.repo
     );
 
-    const mergedPrs = await fetchMergedPrsSince(
-      octokit,
-      repo.owner,
-      repo.repo,
-      latestTagDate
-    );
+  const mergedPrs = await fetchMergedPrsSince(
+    octokit,
+    repo.owner,
+    repo.repo,
+    latestTagDate
+  );
 
     // Include current PR even if not merged yet
-    const currentPrSource: PrChecklistSource = {
-      number: pr.number,
-      body,
-      author: pr.user?.login || "",
-      url: pr.html_url,
-    };
+  const currentPrSource: PrChecklistSource = {
+    number: pr.number,
+    body,
+    author: pr.user?.login || "",
+    url: pr.html_url || `https://github.com/${repo.owner}/${repo.repo}/pull/${pr.number}`,
+  };
 
     const allSources: PrChecklistSource[] = [];
     const seen = new Set<number>();
