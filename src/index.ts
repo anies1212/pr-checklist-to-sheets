@@ -120,15 +120,15 @@ function buildSideBySideRows(
   const dataStartRow = 3; // Row 3 in 1-indexed (after 2 header rows)
   const dataEndRow = dataStartRow + longest - 1;
 
-  // Row 1: Member display names with completion status formula
+  // Row 1: Member display names with completion status formula in adjacent cell
   const memberNameRow: (string | boolean)[] = [];
   members.forEach((member, memberIndex) => {
     const checkboxCol = columnToLetter(memberIndex * 4); // Checkbox column letter
-    // Formula: IF all checkboxes are TRUE, show "✓ 完了!", else show member name
-    const formula = longest > 0
-      ? `=IF(COUNTIF(${checkboxCol}${dataStartRow}:${checkboxCol}${dataEndRow},TRUE)=${longest},"✓ 完了！","${member.displayName || member.id}")`
-      : member.displayName || member.id;
-    memberNameRow.push(formula, "", "", "");
+    // Member name in first cell, completion status formula in second cell
+    const completionFormula = longest > 0
+      ? `=IF(COUNTIF(${checkboxCol}${dataStartRow}:${checkboxCol}${dataEndRow},TRUE)=${longest},"✓ 完了！","")`
+      : "";
+    memberNameRow.push(member.displayName || member.id, completionFormula, "", "");
   });
 
   // Row 2: Column headers for each member
