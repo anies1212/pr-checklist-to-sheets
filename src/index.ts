@@ -1,6 +1,14 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { google } from "googleapis";
+import fs from "fs";
+import path from "path";
+import yaml from "js-yaml";
+
+type Member = {
+  id: string;
+  displayName?: string;
+};
 
 type ChecklistItem = {
   note: string;
@@ -9,6 +17,45 @@ type ChecklistItem = {
 };
 
 const LINK_SECTION_MARKER = "<!-- checklist-to-sheets -->";
+
+function readMembersConfig(configPath: string): Member[] {
+  const fullPath = path.resolve(process.cwd(), configPath);
+  if (!fs.existsSync(fullPath)) {
+    throw new Error(`Members config not found at ${fullPath}`);
+  }
+
+  const content = fs.readFileSync(fullPath, "utf8");
+  const ext = path.extname(fullPath).toLowerCase();
+  let parsed: unknown;
+
+  if (ext === ".yml" || ext === ".yaml") {
+    parsed = yaml.load(content);
+  } else {
+    parsed = JSON.parse(content);
+  }
+
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    !Array.isArray((parsed as { members?: unknown }).members)
+  ) {
+    throw new Error("Config must be an object with a members array");
+  }
+
+  const members = (parsed as { members: Member[] }).members.filter((m) => !!m);
+
+  if (!members.length) {
+    throw new Error("Members list is empty");
+  }
+
+  members.forEach((member) => {
+    if (!member.id) {
+      throw new Error("Each member must have an id");
+    }
+  });
+
+  return members;
+}
 
 function parseChecklistBlock(
   body: string,
@@ -54,12 +101,38 @@ function parseChecklistBlock(
   return items;
 }
 
-function buildRows(items: ChecklistItem[]): string[][] {
-  const headerRow: string[] = ["該当PR", "オーナー", "チェック内容"];
-  const rows: string[][] = [headerRow];
+function buildSideBySideRows(
+  items: ChecklistItem[],
+  members: Member[]
+): (string | boolean)[][] {
+  const longest = items.length;
 
-  for (const item of items) {
-    rows.push([item.prUrl, item.author, item.note]);
+  // Row 1: Member display names (with empty cells for spacing)
+  const memberNameRow: (string | boolean)[] = [];
+  members.forEach((member) => {
+    memberNameRow.push(member.displayName || member.id, "", "", "");
+  });
+
+  // Row 2: Column headers for each member
+  const headerRow: (string | boolean)[] = [];
+  members.forEach(() => {
+    headerRow.push("✓", "該当PR", "オーナー", "チェック内容");
+  });
+
+  const rows: (string | boolean)[][] = [memberNameRow, headerRow];
+
+  // Data rows: each item repeated for each member with checkbox
+  for (let i = 0; i < longest; i++) {
+    const row: (string | boolean)[] = [];
+    const item = items[i];
+    members.forEach(() => {
+      if (item) {
+        row.push(false, item.prUrl, item.author, item.note);
+      } else {
+        row.push("", "", "", "");
+      }
+    });
+    rows.push(row);
   }
 
   return rows;
@@ -68,7 +141,7 @@ function buildRows(items: ChecklistItem[]): string[][] {
 async function appendToSheet(
   sheetId: string,
   rangeStart: string,
-  values: string[][],
+  values: (string | boolean)[][],
   keyB64: string
 ) {
   const keyJson = Buffer.from(keyB64, "base64").toString("utf8");
@@ -251,6 +324,8 @@ async function run(): Promise<void> {
     const body = pr.body ?? "";
     const checklistStartMarker = core.getInput("checklist-start-marker") || "<!-- checklist -->";
     const checklistEndMarker = core.getInput("checklist-end-marker") || "<!-- checklist end -->";
+    const membersConfigPath = core.getInput("members-config-path") || "config/members.json";
+    const members = readMembersConfig(membersConfigPath);
 
     const token = process.env.GITHUB_TOKEN;
     if (!token) {
@@ -308,7 +383,7 @@ async function run(): Promise<void> {
       return;
     }
 
-    const values = buildRows(allItems);
+    const values = buildSideBySideRows(allItems, members);
     const sheetId = core.getInput("sheet-id", { required: true });
     const sheetRange = core.getInput("sheet-range") || "A1";
     const startCell = sheetRange.includes("!")
