@@ -30,3 +30,9 @@ jobs:
           sheet-id: "1lRArNs_BEebnOVl3qpPt94kHM-qZeQIOfcbgRZSXpF4"
           sheet-range: "A1"
           trigger-label: "e2e-checklist"
+      - name: Remove trigger label
+        if: github.event.action == 'labeled' && github.event.label.name == 'e2e-checklist'
+        uses: actions-ecosystem/action-remove-labels@v1
+        with:
+          labels: e2e-checklist
+          github_token: ${{ secrets.PR_CHECKLIST_TO_SHEETS_SECRETS }}
