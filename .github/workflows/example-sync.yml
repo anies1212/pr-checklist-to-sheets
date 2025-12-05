@@ -1,0 +1,27 @@
+name: Sync PR checklist to Sheets
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened, labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    if: github.event.action != 'labeled' || github.event.label.name == 'export-checklist'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync checklist
+        uses: ./pr-checklist-to-sheets
+        with:
+          google-service-account-key: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          sheet-id: ${{ secrets.SHEET_ID }}
+          sheet-range: "チェックリスト!A2:F"
+          checklist-tag-prefix: "checklist"
+          reviewers-config-path: "config/reviewers.json"
+          trigger-label: "export-checklist"
+          append-pr-link: "true"
+          sheet-link-text: "Checklist synced to Google Sheets"

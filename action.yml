@@ -1,0 +1,34 @@
+name: "PR Checklist to Sheets"
+description: "Parse PR body checklists by reviewer and append them to Google Sheets, then post the sheet link back to the PR"
+author: ""
+branding:
+  color: "blue"
+  icon: "check-circle"
+inputs:
+  google-service-account-key:
+    description: "Base64-encoded service account JSON with Sheets access"
+    required: true
+  sheet-id:
+    description: "Target Google Spreadsheet ID"
+    required: true
+  sheet-range:
+    description: "Starting cell within the newly created date-named sheet (e.g. A1, default A1). Sheet name is generated automatically per run."
+    default: "A1"
+  checklist-tag-prefix:
+    description: "Fence tag prefix to parse (default: checklist). Each reviewer uses prefix-id, e.g. checklist-seina"
+    default: "checklist"
+  reviewers-config-path:
+    description: "Path to YAML/JSON containing reviewer list"
+    default: "config/reviewers.json"
+  append-pr-link:
+    description: "Whether to append sheet link into PR body (true/false)"
+    default: "true"
+  sheet-link-text:
+    description: "Custom text for the sheet link added to the PR body"
+    default: "Checklist synced to Google Sheets"
+  trigger-label:
+    description: "Label name that should trigger the sync (checked in the workflow using this action)"
+    default: ""
+runs:
+  using: "node20"
+  main: "dist/index.js"
