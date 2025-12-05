@@ -52,7 +52,7 @@ The action generates a table with the following structure:
 - The checkbox column uses Google Sheets checkboxes (FALSE by default)
 - When all checkboxes are checked, "✓ Done!" appears next to the member name and the header turns green
 
-<img width="1286" height="317" alt="スクリーンショット 2025-12-05 22 47 08" src="https://github.com/user-attachments/assets/99bef070-9c82-46f2-b690-6e1a9acc5c8b" />
+<img width="1286" height="317" alt="Output example" src="https://github.com/user-attachments/assets/99bef070-9c82-46f2-b690-6e1a9acc5c8b" />
 
 ## Inputs
 
@@ -85,6 +85,10 @@ on:
   pull_request_target:
     types: [labeled]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   sync-checklist:
     runs-on: ubuntu-latest
@@ -92,10 +96,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: anies1212/pr-checklist-to-sheets@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           google-service-account-key: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
           sheet-id: ${{ secrets.SHEET_ID }}
-          sheet-range: "A1"
           members-config-path: "config/members.json"
           trigger-label: "export-checklist"
 ```
