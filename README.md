@@ -1,6 +1,6 @@
 # PR Checklist to Sheets Action
 
-GitHub Action that reads checklist items from pull request bodies, collects them into a Google Sheets tab, and posts the sheet link back to the PR.
+GitHub Action that reads checklist items from pull request bodies, collects them into a Google Sheets tab with checkboxes for each team member, and posts the sheet link back to the PR.
 
 ## Checklist format
 
@@ -16,6 +16,44 @@ Use HTML comment markers to define the checklist section in your PR body:
 
 Each line starting with `- ` inside the markers will be captured as a checklist item.
 
+## Members config
+
+Create a `config/members.json` (or `.yaml`) file to define team members. Each member gets their own set of columns in the spreadsheet:
+
+```json
+{
+  "members": [
+    { "id": "seina", "displayName": "せいな" },
+    { "id": "test1", "displayName": "テストユーザー１" },
+    { "id": "test2", "displayName": "テストユーザー２" }
+  ]
+}
+```
+
+Or in YAML format (`config/members.yaml`):
+
+```yaml
+members:
+  - id: seina
+    displayName: せいな
+  - id: test1
+    displayName: テストユーザー１
+  - id: test2
+    displayName: テストユーザー２
+```
+
+## Output format
+
+The action generates a table with the following structure:
+
+| せいな |        |         |              | テストユーザー１ |        |         |              |
+|--------|--------|---------|--------------|------------------|--------|---------|--------------|
+| ✓      | 該当PR | オーナー | チェック内容  | ✓                | 該当PR | オーナー | チェック内容  |
+| ☐      | PR URL | author  | Item text    | ☐                | PR URL | author  | Item text    |
+
+- Each member has 4 columns: checkbox (✓), PR URL, author, and checklist item
+- The checkbox column uses Google Sheets checkboxes (FALSE by default)
+
 ## Inputs
 
 - `google-service-account-key` (required): Base64-encoded service account JSON.
@@ -23,6 +61,7 @@ Each line starting with `- ` inside the markers will be captured as a checklist 
 - `sheet-range` (default `A1`): Starting cell within the generated sheet tab (tab name is auto-generated).
 - `checklist-start-marker` (default `<!-- checklist -->`): HTML comment marker for checklist start.
 - `checklist-end-marker` (default `<!-- checklist end -->`): HTML comment marker for checklist end.
+- `members-config-path` (default `config/members.json`): Path to JSON/YAML file containing members list.
 - `append-pr-link` (default `true`): If true, adds a section with the sheet link to the PR body.
 - `sheet-link-text` (default `Checklist synced to Google Sheets`): Custom link label.
 - `trigger-label` (optional): Label name to filter on in the workflow.
@@ -34,7 +73,7 @@ Each line starting with `- ` inside the markers will be captured as a checklist 
   - PR URL (`github.com/<owner>/<repo>/pull/<number>`)
   - PR author login
   - Checklist item text (line content after `- `)
-- Builds a simple table with columns: `該当PR`, `オーナー`, `チェック内容`.
+- Builds a side-by-side table with 4 columns per member (`✓`, `該当PR`, `オーナー`, `チェック内容`).
 - Creates a new sheet tab named with the current date (`YYYY-MM-DD`; if it already exists, `-2`, `-3`, … is appended) and writes the table starting from the configured start cell.
 - Posts a link to the spreadsheet tab back to the PR body (idempotent section keyed by the sheet ID).
 
@@ -57,6 +96,7 @@ jobs:
           google-service-account-key: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
           sheet-id: ${{ secrets.SHEET_ID }}
           sheet-range: "A1"
+          members-config-path: "config/members.json"
           trigger-label: "export-checklist"
 ```
 

@@ -20,6 +20,9 @@ inputs:
   checklist-end-marker:
     description: "HTML comment marker for checklist end (default: <!-- checklist end -->)"
     default: "<!-- checklist end -->"
+  members-config-path:
+    description: "Path to JSON/YAML file containing members list"
+    default: "config/members.json"
   append-pr-link:
     description: "Whether to append sheet link into PR body (true/false)"
     default: "true"

@@ -1,6 +1,14 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { google } from "googleapis";
+import fs from "fs";
+import path from "path";
+import yaml from "js-yaml";
+
+type Member = {
+  id: string;
+  displayName?: string;
+};
 
 type ChecklistItem = {
   note: string;
@@ -9,6 +17,45 @@ type ChecklistItem = {
 };
 
 const LINK_SECTION_MARKER = "<!-- checklist-to-sheets -->";
+
+function readMembersConfig(configPath: string): Member[] {
+  const fullPath = path.resolve(process.cwd(), configPath);
+  if (!fs.existsSync(fullPath)) {
+    throw new Error(`Members config not found at ${fullPath}`);
+  }
+
+  const content = fs.readFileSync(fullPath, "utf8");
+  const ext = path.extname(fullPath).toLowerCase();
+  let parsed: unknown;
+
+  if (ext === ".yml" || ext === ".yaml") {
+    parsed = yaml.load(content);
+  } else {
+    parsed = JSON.parse(content);
+  }
+
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    !Array.isArray((parsed as { members?: unknown }).members)
+  ) {
+    throw new Error("Config must be an object with a members array");
+  }
+
+  const members = (parsed as { members: Member[] }).members.filter((m) => !!m);
+
+  if (!members.length) {
+    throw new Error("Members list is empty");
+  }
+
+  members.forEach((member) => {
+    if (!member.id) {
+      throw new Error("Each member must have an id");
+    }
+  });
+
+  return members;
+}
 
 function parseChecklistBlock(
   body: string,
@@ -54,22 +101,79 @@ function parseChecklistBlock(
   return items;
 }
 
-function buildRows(items: ChecklistItem[]): string[][] {
-  const headerRow: string[] = ["該当PR", "オーナー", "チェック内容"];
-  const rows: string[][] = [headerRow];
+// Convert column index to Excel-style column letter (0 -> A, 1 -> B, 26 -> AA, etc.)
+function columnToLetter(column: number): string {
+  let letter = "";
+  let temp = column;
+  while (temp >= 0) {
+    letter = String.fromCharCode((temp % 26) + 65) + letter;
+    temp = Math.floor(temp / 26) - 1;
+  }
+  return letter;
+}
 
-  for (const item of items) {
-    rows.push([item.prUrl, item.author, item.note]);
+function buildSideBySideRows(
+  items: ChecklistItem[],
+  members: Member[]
+): (string | boolean)[][] {
+  const longest = items.length;
+  const dataStartRow = 3; // Row 3 in 1-indexed (after 2 header rows)
+  const dataEndRow = dataStartRow + longest - 1;
+
+  // Row 1: Member display names with completion status formula in adjacent cell
+  const memberNameRow: (string | boolean)[] = [];
+  members.forEach((member, memberIndex) => {
+    const checkboxCol = columnToLetter(memberIndex * 4); // Checkbox column letter
+    // Member name in first cell, completion status formula in second cell
+    const completionFormula = longest > 0
+      ? `=IF(COUNTIF(${checkboxCol}${dataStartRow}:${checkboxCol}${dataEndRow},TRUE)=${longest},"✓ 完了！","")`
+      : "";
+    memberNameRow.push(member.displayName || member.id, completionFormula, "", "");
+  });
+
+  // Row 2: Column headers for each member
+  const headerRow: (string | boolean)[] = [];
+  members.forEach(() => {
+    headerRow.push("✓", "該当PR", "オーナー", "チェック内容");
+  });
+
+  const rows: (string | boolean)[][] = [memberNameRow, headerRow];
+
+  // Data rows: each item repeated for each member with checkbox
+  for (let i = 0; i < longest; i++) {
+    const row: (string | boolean)[] = [];
+    const item = items[i];
+    members.forEach(() => {
+      if (item) {
+        row.push(false, item.prUrl, item.author, item.note);
+      } else {
+        row.push("", "", "", "");
+      }
+    });
+    rows.push(row);
   }
 
   return rows;
 }
 
+// Member color palette (soft, professional colors)
+const MEMBER_COLORS = [
+  { red: 0.85, green: 0.92, blue: 0.98 }, // Light blue
+  { red: 0.98, green: 0.91, blue: 0.85 }, // Light orange
+  { red: 0.88, green: 0.94, blue: 0.88 }, // Light green
+  { red: 0.95, green: 0.88, blue: 0.95 }, // Light purple
+  { red: 0.98, green: 0.95, blue: 0.85 }, // Light yellow
+  { red: 0.92, green: 0.88, blue: 0.95 }, // Light indigo
+];
+
+const HEADER_COLOR = { red: 0.95, green: 0.95, blue: 0.95 }; // Light gray
+
 async function appendToSheet(
   sheetId: string,
   rangeStart: string,
-  values: string[][],
-  keyB64: string
+  values: (string | boolean)[][],
+  keyB64: string,
+  memberCount: number
 ) {
   const keyJson = Buffer.from(keyB64, "base64").toString("utf8");
   const creds = JSON.parse(keyJson);
@@ -109,6 +213,9 @@ async function appendToSheet(
     },
   });
 
+  const createdSheetId =
+    addSheetResponse.data.replies?.[0]?.addSheet?.properties?.sheetId;
+
   await sheets.spreadsheets.values.update({
     spreadsheetId: sheetId,
     range: `${sheetTitle}!${rangeStart}`,
@@ -116,8 +223,293 @@ async function appendToSheet(
     requestBody: { values },
   });
 
-  const createdSheetId =
-    addSheetResponse.data.replies?.[0]?.addSheet?.properties?.sheetId;
+  // Apply styling and checkboxes
+  if (createdSheetId !== undefined && values.length > 0) {
+    const totalColumns = memberCount * 4;
+    const totalRows = values.length;
+    const dataRowCount = Math.max(0, values.length - 2);
+    const requests: object[] = [];
+
+    // 1. Freeze header rows (first 2 rows)
+    requests.push({
+      updateSheetProperties: {
+        properties: {
+          sheetId: createdSheetId,
+          gridProperties: {
+            frozenRowCount: 2,
+          },
+        },
+        fields: "gridProperties.frozenRowCount",
+      },
+    });
+
+    // 2. Style member name row (row 0) - colored backgrounds per member, LEFT aligned
+    for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
+      const color = MEMBER_COLORS[memberIndex % MEMBER_COLORS.length];
+      const startCol = memberIndex * 4;
+
+      requests.push({
+        repeatCell: {
+          range: {
+            sheetId: createdSheetId,
+            startRowIndex: 0,
+            endRowIndex: 1,
+            startColumnIndex: startCol,
+            endColumnIndex: startCol + 4,
+          },
+          cell: {
+            userEnteredFormat: {
+              backgroundColor: color,
+              textFormat: { bold: true, fontSize: 11 },
+              horizontalAlignment: "LEFT",
+              verticalAlignment: "MIDDLE",
+              padding: { left: 8 },
+            },
+          },
+          fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,padding)",
+        },
+      });
+
+      // Add conditional formatting: green background when all checkboxes are checked
+      const checkboxCol = columnToLetter(startCol);
+      const dataStartRow = 3;
+      const dataEndRow = dataStartRow + dataRowCount - 1;
+
+      if (dataRowCount > 0) {
+        requests.push({
+          addConditionalFormatRule: {
+            rule: {
+              ranges: [
+                {
+                  sheetId: createdSheetId,
+                  startRowIndex: 0,
+                  endRowIndex: 1,
+                  startColumnIndex: startCol,
+                  endColumnIndex: startCol + 4,
+                },
+              ],
+              booleanRule: {
+                condition: {
+                  type: "CUSTOM_FORMULA",
+                  values: [
+                    {
+                      userEnteredValue: `=COUNTIF(${checkboxCol}${dataStartRow}:${checkboxCol}${dataEndRow},TRUE)=${dataRowCount}`,
+                    },
+                  ],
+                },
+                format: {
+                  backgroundColor: { red: 0.72, green: 0.88, blue: 0.72 }, // Light green for completion
+                  textFormat: { bold: true, foregroundColor: { red: 0.15, green: 0.5, blue: 0.15 } },
+                },
+              },
+            },
+            index: 0,
+          },
+        });
+      }
+    }
+
+    // 3. Style column header row (row 1) - gray background, bold
+    requests.push({
+      repeatCell: {
+        range: {
+          sheetId: createdSheetId,
+          startRowIndex: 1,
+          endRowIndex: 2,
+          startColumnIndex: 0,
+          endColumnIndex: totalColumns,
+        },
+        cell: {
+          userEnteredFormat: {
+            backgroundColor: HEADER_COLOR,
+            textFormat: { bold: true, fontSize: 10 },
+            horizontalAlignment: "CENTER",
+            verticalAlignment: "MIDDLE",
+          },
+        },
+        fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)",
+      },
+    });
+
+    // 4. Style data rows - center align checkbox column, add light borders
+    if (dataRowCount > 0) {
+      // Center align all data cells
+      requests.push({
+        repeatCell: {
+          range: {
+            sheetId: createdSheetId,
+            startRowIndex: 2,
+            endRowIndex: totalRows,
+            startColumnIndex: 0,
+            endColumnIndex: totalColumns,
+          },
+          cell: {
+            userEnteredFormat: {
+              verticalAlignment: "MIDDLE",
+            },
+          },
+          fields: "userEnteredFormat(verticalAlignment)",
+        },
+      });
+
+      // Add checkboxes to checkbox columns
+      for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
+        const columnIndex = memberIndex * 4;
+
+        requests.push({
+          setDataValidation: {
+            range: {
+              sheetId: createdSheetId,
+              startRowIndex: 2,
+              endRowIndex: 2 + dataRowCount,
+              startColumnIndex: columnIndex,
+              endColumnIndex: columnIndex + 1,
+            },
+            rule: {
+              condition: { type: "BOOLEAN" },
+              showCustomUi: true,
+            },
+          },
+        });
+
+        // Center align checkbox column
+        requests.push({
+          repeatCell: {
+            range: {
+              sheetId: createdSheetId,
+              startRowIndex: 2,
+              endRowIndex: totalRows,
+              startColumnIndex: columnIndex,
+              endColumnIndex: columnIndex + 1,
+            },
+            cell: {
+              userEnteredFormat: {
+                horizontalAlignment: "CENTER",
+              },
+            },
+            fields: "userEnteredFormat(horizontalAlignment)",
+          },
+        });
+      }
+    }
+
+    // 5. Add borders around each member's section
+    for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
+      const startCol = memberIndex * 4;
+      const borderStyle = {
+        style: "SOLID",
+        width: 1,
+        color: { red: 0.8, green: 0.8, blue: 0.8 },
+      };
+      const thickBorder = {
+        style: "SOLID_MEDIUM",
+        width: 2,
+        color: { red: 0.6, green: 0.6, blue: 0.6 },
+      };
+
+      // Outer border for member section
+      requests.push({
+        updateBorders: {
+          range: {
+            sheetId: createdSheetId,
+            startRowIndex: 0,
+            endRowIndex: totalRows,
+            startColumnIndex: startCol,
+            endColumnIndex: startCol + 4,
+          },
+          top: thickBorder,
+          bottom: thickBorder,
+          left: thickBorder,
+          right: thickBorder,
+          innerHorizontal: borderStyle,
+          innerVertical: borderStyle,
+        },
+      });
+    }
+
+    // 6. Set column widths
+    for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
+      const startCol = memberIndex * 4;
+
+      // Checkbox column (also contains member name in header row)
+      requests.push({
+        updateDimensionProperties: {
+          range: {
+            sheetId: createdSheetId,
+            dimension: "COLUMNS",
+            startIndex: startCol,
+            endIndex: startCol + 1,
+          },
+          properties: { pixelSize: 120 },
+          fields: "pixelSize",
+        },
+      });
+
+      // PR URL column - same width as owner
+      requests.push({
+        updateDimensionProperties: {
+          range: {
+            sheetId: createdSheetId,
+            dimension: "COLUMNS",
+            startIndex: startCol + 1,
+            endIndex: startCol + 2,
+          },
+          properties: { pixelSize: 100 },
+          fields: "pixelSize",
+        },
+      });
+
+      // Owner column - medium
+      requests.push({
+        updateDimensionProperties: {
+          range: {
+            sheetId: createdSheetId,
+            dimension: "COLUMNS",
+            startIndex: startCol + 2,
+            endIndex: startCol + 3,
+          },
+          properties: { pixelSize: 100 },
+          fields: "pixelSize",
+        },
+      });
+
+      // Checklist content column - wide
+      requests.push({
+        updateDimensionProperties: {
+          range: {
+            sheetId: createdSheetId,
+            dimension: "COLUMNS",
+            startIndex: startCol + 3,
+            endIndex: startCol + 4,
+          },
+          properties: { pixelSize: 300 },
+          fields: "pixelSize",
+        },
+      });
+    }
+
+    // 7. Set row height for header rows
+    requests.push({
+      updateDimensionProperties: {
+        range: {
+          sheetId: createdSheetId,
+          dimension: "ROWS",
+          startIndex: 0,
+          endIndex: 2,
+        },
+        properties: { pixelSize: 32 },
+        fields: "pixelSize",
+      },
+    });
+
+    // Execute all formatting requests
+    if (requests.length > 0) {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: sheetId,
+        requestBody: { requests },
+      });
+    }
+  }
 
   return { sheetTitle, createdSheetId };
 }
@@ -251,6 +643,8 @@ async function run(): Promise<void> {
     const body = pr.body ?? "";
     const checklistStartMarker = core.getInput("checklist-start-marker") || "<!-- checklist -->";
     const checklistEndMarker = core.getInput("checklist-end-marker") || "<!-- checklist end -->";
+    const membersConfigPath = core.getInput("members-config-path") || "config/members.json";
+    const members = readMembersConfig(membersConfigPath);
 
     const token = process.env.GITHUB_TOKEN;
     if (!token) {
@@ -308,7 +702,7 @@ async function run(): Promise<void> {
       return;
     }
 
-    const values = buildRows(allItems);
+    const values = buildSideBySideRows(allItems, members);
     const sheetId = core.getInput("sheet-id", { required: true });
     const sheetRange = core.getInput("sheet-range") || "A1";
     const startCell = sheetRange.includes("!")
@@ -320,7 +714,8 @@ async function run(): Promise<void> {
       sheetId,
       startCell,
       values,
-      key
+      key,
+      members.length
     );
     core.info(
       `Created sheet "${sheetTitle}" with ${values.length} rows in spreadsheet ${sheetId}`

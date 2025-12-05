@@ -2,7 +2,7 @@ name: E2E checklist sync
 
 on:
   pull_request_target:
-    types: [opened, edited, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened, labeled]
 
 permissions:
   contents: read
@@ -21,15 +21,6 @@ jobs:
         run: npm install
       - name: Build local action
         run: npm run build
-      - name: Debug GITHUB_TOKEN presence
-        run: |
-          if [ -z "${GITHUB_TOKEN}" ]; then
-            echo "GITHUB_TOKEN is EMPTY"
-          else
-            echo "GITHUB_TOKEN is present (length=${#GITHUB_TOKEN})"
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.PR_CHECKLIST_TO_SHEETS_SECRETS }}
       - name: Sync PR checklist to demo sheet
         uses: ./
         env:
@@ -39,3 +30,9 @@ jobs:
           sheet-id: "1lRArNs_BEebnOVl3qpPt94kHM-qZeQIOfcbgRZSXpF4"
           sheet-range: "A1"
           trigger-label: "e2e-checklist"
+      - name: Remove trigger label
+        if: github.event.action == 'labeled' && github.event.label.name == 'e2e-checklist'
+        uses: actions-ecosystem/action-remove-labels@v1
+        with:
+          labels: e2e-checklist
+          github_token: ${{ secrets.PR_CHECKLIST_TO_SHEETS_SECRETS }}
