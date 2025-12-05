@@ -236,7 +236,8 @@ async function getLatestTagDateIso(
   });
 
   if (!tags.length) {
-    throw new Error("No tags found in repository");
+    core.info("No tags found; fetching all PRs");
+    return new Date(0).toISOString();
   }
 
   const latestTag = tags[0];
