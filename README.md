@@ -9,8 +9,8 @@ Use HTML comment markers to define the checklist section in your PR body:
 ```markdown
 ## Checklist
 <!-- checklist -->
-- このページをこう改修したのでここを確認してください
-- このページがこうなので、こうしてください
+- Please verify this page modification
+- Please check this feature works correctly
 <!-- checklist end -->
 ```
 
@@ -23,9 +23,9 @@ Create a `config/members.json` (or `.yaml`) file to define team members. Each me
 ```json
 {
   "members": [
-    { "id": "seina", "displayName": "せいな" },
-    { "id": "test1", "displayName": "テストユーザー１" },
-    { "id": "test2", "displayName": "テストユーザー２" }
+    { "id": "alice", "displayName": "Alice" },
+    { "id": "bob", "displayName": "Bob" },
+    { "id": "charlie", "displayName": "Charlie" }
   ]
 }
 ```
@@ -34,25 +34,26 @@ Or in YAML format (`config/members.yaml`):
 
 ```yaml
 members:
-  - id: seina
-    displayName: せいな
-  - id: test1
-    displayName: テストユーザー１
-  - id: test2
-    displayName: テストユーザー２
+  - id: alice
+    displayName: Alice
+  - id: bob
+    displayName: Bob
+  - id: charlie
+    displayName: Charlie
 ```
 
 ## Output format
 
 The action generates a table with the following structure:
 
-| せいな |        |         |              | テストユーザー１ |        |         |              |
-|--------|--------|---------|--------------|------------------|--------|---------|--------------|
-| ✓      | 該当PR | オーナー | チェック内容  | ✓                | 該当PR | オーナー | チェック内容  |
-| ☐      | PR URL | author  | Item text    | ☐                | PR URL | author  | Item text    |
+| Alice  |        |       |             | Bob    |        |       |             |
+|--------|--------|-------|-------------|--------|--------|-------|-------------|
+| ✓      | PR     | Owner | Description | ✓      | PR     | Owner | Description |
+| ☐      | PR URL | author| Item text   | ☐      | PR URL | author| Item text   |
 
-- Each member has 4 columns: checkbox (✓), PR URL, author, and checklist item
+- Each member has 4 columns: checkbox (✓), PR URL, Owner, and Description
 - The checkbox column uses Google Sheets checkboxes (FALSE by default)
+- When all checkboxes are checked, "✓ Done!" appears next to the member name and the header turns green
 
 ## Inputs
 
@@ -73,7 +74,7 @@ The action generates a table with the following structure:
   - PR URL (`github.com/<owner>/<repo>/pull/<number>`)
   - PR author login
   - Checklist item text (line content after `- `)
-- Builds a side-by-side table with 4 columns per member (`✓`, `該当PR`, `オーナー`, `チェック内容`).
+- Builds a side-by-side table with 4 columns per member (`✓`, `PR`, `Owner`, `Description`).
 - Creates a new sheet tab named with the current date (`YYYY-MM-DD`; if it already exists, `-2`, `-3`, … is appended) and writes the table starting from the configured start cell.
 - Posts a link to the spreadsheet tab back to the PR body (idempotent section keyed by the sheet ID).
 
@@ -83,12 +84,12 @@ The action generates a table with the following structure:
 name: Sync checklist to Sheets
 on:
   pull_request_target:
-    types: [opened, edited, synchronize, reopened, labeled]
+    types: [labeled]
 
 jobs:
   sync-checklist:
     runs-on: ubuntu-latest
-    if: github.event.action != 'labeled' || github.event.label.name == 'export-checklist'
+    if: github.event.label.name == 'export-checklist'
     steps:
       - uses: actions/checkout@v4
       - uses: anies1212/pr-checklist-to-sheets@main

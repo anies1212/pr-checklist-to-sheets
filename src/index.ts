@@ -126,7 +126,7 @@ function buildSideBySideRows(
     const checkboxCol = columnToLetter(memberIndex * 4); // Checkbox column letter
     // Member name in first cell, completion status formula in second cell
     const completionFormula = longest > 0
-      ? `=IF(COUNTIF(${checkboxCol}${dataStartRow}:${checkboxCol}${dataEndRow},TRUE)=${longest},"✓ 完了！","")`
+      ? `=IF(COUNTIF(${checkboxCol}${dataStartRow}:${checkboxCol}${dataEndRow},TRUE)=${longest},"✓ Done!","")`
       : "";
     memberNameRow.push(member.displayName || member.id, completionFormula, "", "");
   });
@@ -134,7 +134,7 @@ function buildSideBySideRows(
   // Row 2: Column headers for each member
   const headerRow: (string | boolean)[] = [];
   members.forEach(() => {
-    headerRow.push("✓", "該当PR", "オーナー", "チェック内容");
+    headerRow.push("✓", "PR", "Owner", "Description");
   });
 
   const rows: (string | boolean)[][] = [memberNameRow, headerRow];
