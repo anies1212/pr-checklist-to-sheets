@@ -14,19 +14,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: pr-checklist-to-sheets
       - uses: actions/setup-node@v4
         with:
           node-version: 20
       - name: Install deps
         run: npm install
-        working-directory: pr-checklist-to-sheets
       - name: Build local action
         run: npm run build
-        working-directory: pr-checklist-to-sheets
       - name: Sync PR checklist to demo sheet
-        uses: ./pr-checklist-to-sheets
+        uses: ./
         with:
           google-service-account-key: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
           sheet-id: "1lRArNs_BEebnOVl3qpPt94kHM-qZeQIOfcbgRZSXpF4"
