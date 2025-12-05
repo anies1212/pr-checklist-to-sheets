@@ -22,7 +22,7 @@ jobs:
       - name: Build local action
         run: npm run build
       - name: Sync PR checklist to demo sheet
-        uses: ./
+        uses: ./pr-checklist-to-sheets
         with:
           google-service-account-key: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
           sheet-id: "1lRArNs_BEebnOVl3qpPt94kHM-qZeQIOfcbgRZSXpF4"

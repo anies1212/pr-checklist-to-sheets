@@ -1,0 +1,30 @@
+name: "PR Checklist to Sheets (nested wrapper)"
+description: "Wrapper action to allow local path resolution during E2E"
+inputs:
+  google-service-account-key:
+    required: true
+    description: "Base64-encoded service account JSON with Sheets access"
+  sheet-id:
+    required: true
+    description: "Target Google Spreadsheet ID"
+  sheet-range:
+    default: "A1"
+    description: "Starting cell within the newly created date-named sheet"
+  checklist-tag-prefix:
+    default: "checklist"
+    description: "Fence tag prefix to parse"
+  reviewers-config-path:
+    default: "config/reviewers.json"
+    description: "Path to YAML/JSON containing reviewer list"
+  append-pr-link:
+    default: "true"
+    description: "Whether to append sheet link into PR body"
+  sheet-link-text:
+    default: "Checklist synced to Google Sheets"
+    description: "Custom text for the sheet link added to the PR body"
+  trigger-label:
+    default: ""
+    description: "Label name that should trigger the sync"
+runs:
+  using: "node20"
+  main: "../dist/index.js"
