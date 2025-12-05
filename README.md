@@ -23,9 +23,9 @@ Create a `config/members.json` (or `.yaml`) file to define team members. Each me
 ```json
 {
   "members": [
-    { "id": "alice", "displayName": "Alice" },
-    { "id": "bob", "displayName": "Bob" },
-    { "id": "charlie", "displayName": "Charlie" }
+    { "name": "Alice" },
+    { "name": "Bob" },
+    { "name": "Charlie" }
   ]
 }
 ```
@@ -34,12 +34,9 @@ Or in YAML format (`config/members.yaml`):
 
 ```yaml
 members:
-  - id: alice
-    displayName: Alice
-  - id: bob
-    displayName: Bob
-  - id: charlie
-    displayName: Charlie
+  - name: Alice
+  - name: Bob
+  - name: Charlie
 ```
 
 ## Output format

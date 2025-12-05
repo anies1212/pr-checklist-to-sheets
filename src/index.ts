@@ -6,8 +6,7 @@ import path from "path";
 import yaml from "js-yaml";
 
 type Member = {
-  id: string;
-  displayName?: string;
+  name: string;
 };
 
 type ChecklistItem = {
@@ -49,8 +48,8 @@ function readMembersConfig(configPath: string): Member[] {
   }
 
   members.forEach((member) => {
-    if (!member.id) {
-      throw new Error("Each member must have an id");
+    if (!member.name) {
+      throw new Error("Each member must have a name");
     }
   });
 
@@ -128,7 +127,7 @@ function buildSideBySideRows(
     const completionFormula = longest > 0
       ? `=IF(COUNTIF(${checkboxCol}${dataStartRow}:${checkboxCol}${dataEndRow},TRUE)=${longest},"✓ Done!","")`
       : "";
-    memberNameRow.push(member.displayName || member.id, completionFormula, "", "");
+    memberNameRow.push(member.name, completionFormula, "", "");
   });
 
   // Row 2: Column headers for each member

@@ -1,7 +1,7 @@
 {
   "members": [
-    { "id": "seina", "displayName": "せいな" },
-    { "id": "test1", "displayName": "テストユーザー１" },
-    { "id": "test2", "displayName": "テストユーザー２" }
+    { "name": "Alice" },
+    { "name": "Bob" },
+    { "name": "Charlie" }
   ]
 }
