@@ -14,12 +14,12 @@ inputs:
   sheet-range:
     description: "Starting cell within the newly created date-named sheet (e.g. A1, default A1). Sheet name is generated automatically per run."
     default: "A1"
-  checklist-tag-prefix:
-    description: "Fence tag prefix to parse (default: checklist). Each reviewer uses prefix-id, e.g. checklist-seina"
-    default: "checklist"
-  reviewers-config-path:
-    description: "Path to YAML/JSON containing reviewer list"
-    default: "config/reviewers.json"
+  checklist-start-marker:
+    description: "HTML comment marker for checklist start (default: <!-- checklist -->)"
+    default: "<!-- checklist -->"
+  checklist-end-marker:
+    description: "HTML comment marker for checklist end (default: <!-- checklist end -->)"
+    default: "<!-- checklist end -->"
   append-pr-link:
     description: "Whether to append sheet link into PR body (true/false)"
     default: "true"

@@ -1,50 +1,28 @@
 # PR Checklist to Sheets Action
 
-GitHub Action that reads reviewer-specific checklist blocks from pull requests, builds a reviewer-by-reviewer checklist table in a fresh Google Sheets tab, and posts the sheet link back to the PR.
+GitHub Action that reads checklist items from pull request bodies, collects them into a Google Sheets tab, and posts the sheet link back to the PR.
 
 ## Checklist format
 
-- Add fenced code blocks per reviewer: ` ```<prefix>-<reviewerId> `.
-- The default prefix is `checklist`. Reviewer IDs come from `config/reviewers.json` (or YAML).
-- Each line: `- [x] コメント本文`（日付なしでシンプルに書く）
+Use HTML comment markers to define the checklist section in your PR body:
 
-Example PR body snippet:
-
-```
-## チェックリスト
-```checklist-seina
-- [x] API レスポンス確認
-- [ ] UI 動作確認
-```
-```checklist-wakahara
-- [ ] テストケース追加
-```
+```markdown
+## Checklist
+<!-- checklist -->
+- このページをこう改修したのでここを確認してください
+- このページがこうなので、こうしてください
+<!-- checklist end -->
 ```
 
-The action reads `reviewerId` from config; display names are used as column headers.
-
-## Reviewer config
-
-`config/reviewers.json` (or `.yaml`) example:
-
-```json
-{
-  "reviewers": [
-    { "id": "john", "displayName": "John" },
-    { "id": "daniel", "displayName": "Daniel" }
-  ]
-}
-```
-
-See also `config/reviewers.example.yaml`.
+Each line starting with `- ` inside the markers will be captured as a checklist item.
 
 ## Inputs
 
 - `google-service-account-key` (required): Base64-encoded service account JSON.
 - `sheet-id` (required): Spreadsheet ID.
 - `sheet-range` (default `A1`): Starting cell within the generated sheet tab (tab name is auto-generated).
-- `checklist-tag-prefix` (default `checklist`): Fence prefix; block name is `<prefix>-<id>`.
-- `reviewers-config-path` (default `config/reviewers.json`): YAML/JSON with a `reviewers` array (`{ id, displayName? }`).
+- `checklist-start-marker` (default `<!-- checklist -->`): HTML comment marker for checklist start.
+- `checklist-end-marker` (default `<!-- checklist end -->`): HTML comment marker for checklist end.
 - `append-pr-link` (default `true`): If true, adds a section with the sheet link to the PR body.
 - `sheet-link-text` (default `Checklist synced to Google Sheets`): Custom link label.
 - `trigger-label` (optional): Label name to filter on in the workflow.
@@ -52,12 +30,11 @@ See also `config/reviewers.example.yaml`.
 ## Behavior
 
 - Finds the latest tag in the repository and collects every merged PR since that tag, plus the current PR.
-- For each PR, reads checklist blocks per reviewer and captures:
-  - ✅ state (TRUE/FALSE)
+- For each PR, reads checklist items within the HTML comment markers and captures:
   - PR URL (`github.com/<owner>/<repo>/pull/<number>`)
   - PR author login
-  - Note text (line content after `- [ ]`)
-- Builds side-by-side rows: four columns per reviewer (`✓`, `該当PR`, `オーナー`, `<displayName>`). Completion counts are shown in the first header row (e.g., `3/5チェック完了`).
+  - Checklist item text (line content after `- `)
+- Builds a simple table with columns: `該当PR`, `オーナー`, `チェック内容`.
 - Creates a new sheet tab named with the current date (`YYYY-MM-DD`; if it already exists, `-2`, `-3`, … is appended) and writes the table starting from the configured start cell.
 - Posts a link to the spreadsheet tab back to the PR body (idempotent section keyed by the sheet ID).
 
@@ -85,7 +62,7 @@ jobs:
 
 ## Notes
 
-- If no matching checklist blocks are found, the action exits successfully without updating Sheets or the PR body.
+- If no matching checklist items are found, the action exits successfully without updating Sheets or the PR body.
 - Ensure the service account has edit access to the spreadsheet.
 - Each run creates a new sheet tab (date-named) instead of appending to existing data.
 
@@ -98,15 +75,12 @@ jobs:
 
 Example PR body for the demo:
 
-```
-## チェックリスト
-```checklist-seina
-- [x] API response verification
-- [ ] UI behavior verification
-```
-```checklist-wakahara
-- [ ] Add test cases
-```
+```markdown
+## Checklist
+<!-- checklist -->
+- API response verification
+- UI behavior verification
+<!-- checklist end -->
 ```
 
 ## License

@@ -1,82 +1,32 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { google } from "googleapis";
-import fs from "fs";
-import path from "path";
-import yaml from "js-yaml";
-
-type Reviewer = {
-  id: string;
-  displayName?: string;
-};
 
 type ChecklistItem = {
-  done: boolean;
   note: string;
   prUrl: string;
   author: string;
 };
 
-type ParsedReviewerChecklist = {
-  reviewer: Reviewer;
-  items: ChecklistItem[];
-};
-
 const LINK_SECTION_MARKER = "<!-- checklist-to-sheets -->";
-
-function readReviewersConfig(configPath: string): Reviewer[] {
-  const fullPath = path.resolve(process.cwd(), configPath);
-  if (!fs.existsSync(fullPath)) {
-    throw new Error(`Reviewer config not found at ${fullPath}`);
-  }
-
-  const content = fs.readFileSync(fullPath, "utf8");
-  const ext = path.extname(fullPath).toLowerCase();
-  let parsed: unknown;
-
-  if (ext === ".yml" || ext === ".yaml") {
-    parsed = yaml.load(content);
-  } else {
-    parsed = JSON.parse(content);
-  }
-
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    !Array.isArray((parsed as { reviewers?: unknown }).reviewers)
-  ) {
-    throw new Error("Config must be an object with a reviewers array");
-  }
-
-  const reviewers = (parsed as { reviewers: Reviewer[] }).reviewers.filter(
-    (r) => !!r
-  );
-
-  if (!reviewers.length) {
-    throw new Error("Reviewer list is empty");
-  }
-
-  reviewers.forEach((reviewer) => {
-    if (!reviewer.id) {
-      throw new Error("Each reviewer must have an id");
-    }
-  });
-
-  return reviewers;
-}
 
 function parseChecklistBlock(
   body: string,
-  tag: string,
-  reviewer: Reviewer,
+  startMarker: string,
+  endMarker: string,
   prUrl: string,
   author: string
-): ParsedReviewerChecklist {
-  const fence = new RegExp("```" + tag + "\\n([\\s\\S]*?)```", "m");
-  const match = body.match(fence);
+): ChecklistItem[] {
+  const regex = new RegExp(
+    startMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") +
+      "\\s*([\\s\\S]*?)" +
+      endMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    "m"
+  );
+  const match = body.match(regex);
 
   if (!match) {
-    return { reviewer, items: [] };
+    return [];
   }
 
   const lines = match[1]
@@ -86,62 +36,30 @@ function parseChecklistBlock(
 
   const items: ChecklistItem[] = [];
   for (const line of lines) {
-    const parsed = line.match(/^- \[( |x)\]\s*(.+)$/i);
+    // Match lines starting with "- " (simple list item without checkbox)
+    const parsed = line.match(/^-\s+(.+)$/);
     if (!parsed) {
-      core.info(`Skipping unparsable line for ${reviewer.id}: ${line}`);
+      core.info(`Skipping unparsable line: ${line}`);
       continue;
     }
 
-    const [, checkbox, note] = parsed;
+    const [, note] = parsed;
     items.push({
-      done: checkbox.toLowerCase() === "x",
       note: note.trim(),
       prUrl,
       author,
     });
   }
 
-  return { reviewer, items };
+  return items;
 }
 
-function buildSideBySideRows(
-  parsed: ParsedReviewerChecklist[]
-): (string | boolean)[][] {
-  const longest = Math.max(...parsed.map((p) => p.items.length), 0);
-  const headerRow1: (string | boolean)[] = [];
-  const headerRow2: (string | boolean)[] = [];
+function buildRows(items: ChecklistItem[]): string[][] {
+  const headerRow: string[] = ["該当PR", "オーナー", "チェック内容"];
+  const rows: string[][] = [headerRow];
 
-  parsed.forEach((checklist) => {
-    const doneCount = checklist.items.filter((item) => item.done).length;
-    const total = checklist.items.length;
-    headerRow1.push(
-      "チェックリスト",
-      "",
-      "",
-      `${doneCount}/${total || 0}チェック完了`
-    );
-    headerRow2.push(
-      "✓",
-      "該当PR",
-      "オーナー",
-      checklist.reviewer.displayName || checklist.reviewer.id
-    );
-  });
-
-  const rows: (string | boolean)[][] = [];
-  rows.push(headerRow1, headerRow2);
-
-  for (let rowIndex = 0; rowIndex < longest; rowIndex++) {
-    const row: (string | boolean)[] = [];
-    for (const checklist of parsed) {
-      const item = checklist.items[rowIndex];
-      if (item) {
-        row.push(item.done, item.prUrl, item.author, item.note);
-      } else {
-        row.push("", "", "", "");
-      }
-    }
-    rows.push(row);
+  for (const item of items) {
+    rows.push([item.prUrl, item.author, item.note]);
   }
 
   return rows;
@@ -150,7 +68,7 @@ function buildSideBySideRows(
 async function appendToSheet(
   sheetId: string,
   rangeStart: string,
-  values: (string | boolean)[][],
+  values: string[][],
   keyB64: string
 ) {
   const keyJson = Buffer.from(keyB64, "base64").toString("utf8");
@@ -331,9 +249,8 @@ async function run(): Promise<void> {
     }
 
     const body = pr.body ?? "";
-    const checklistTagPrefix = core.getInput("checklist-tag-prefix") || "checklist";
-    const reviewersConfigPath = core.getInput("reviewers-config-path");
-    const reviewers = readReviewersConfig(reviewersConfigPath);
+    const checklistStartMarker = core.getInput("checklist-start-marker") || "<!-- checklist -->";
+    const checklistEndMarker = core.getInput("checklist-end-marker") || "<!-- checklist end -->";
 
     const token = process.env.GITHUB_TOKEN;
     if (!token) {
@@ -347,20 +264,20 @@ async function run(): Promise<void> {
       repo.repo
     );
 
-  const mergedPrs = await fetchMergedPrsSince(
-    octokit,
-    repo.owner,
-    repo.repo,
-    latestTagDate
-  );
+    const mergedPrs = await fetchMergedPrsSince(
+      octokit,
+      repo.owner,
+      repo.repo,
+      latestTagDate
+    );
 
     // Include current PR even if not merged yet
-  const currentPrSource: PrChecklistSource = {
-    number: pr.number,
-    body,
-    author: pr.user?.login || "",
-    url: pr.html_url || `https://github.com/${repo.owner}/${repo.repo}/pull/${pr.number}`,
-  };
+    const currentPrSource: PrChecklistSource = {
+      number: pr.number,
+      body,
+      author: pr.user?.login || "",
+      url: pr.html_url || `https://github.com/${repo.owner}/${repo.repo}/pull/${pr.number}`,
+    };
 
     const allSources: PrChecklistSource[] = [];
     const seen = new Set<number>();
@@ -374,27 +291,24 @@ async function run(): Promise<void> {
       allSources.push(currentPrSource);
     }
 
-    const parsedChecklists = reviewers.map((reviewer) => {
-      const aggregated: ChecklistItem[] = [];
-      for (const source of allSources) {
-        const parsed = parseChecklistBlock(
-          source.body,
-          `${checklistTagPrefix}-${reviewer.id}`,
-          reviewer,
-          source.url,
-          source.author
-        );
-        aggregated.push(...parsed.items);
-      }
-      return { reviewer, items: aggregated };
-    });
+    const allItems: ChecklistItem[] = [];
+    for (const source of allSources) {
+      const items = parseChecklistBlock(
+        source.body,
+        checklistStartMarker,
+        checklistEndMarker,
+        source.url,
+        source.author
+      );
+      allItems.push(...items);
+    }
 
-    if (parsedChecklists.every((c) => c.items.length === 0)) {
-      core.info("No checklist items found for any reviewer, skipping");
+    if (allItems.length === 0) {
+      core.info("No checklist items found, skipping");
       return;
     }
 
-    const values = buildSideBySideRows(parsedChecklists);
+    const values = buildRows(allItems);
     const sheetId = core.getInput("sheet-id", { required: true });
     const sheetRange = core.getInput("sheet-range") || "A1";
     const startCell = sheetRange.includes("!")
