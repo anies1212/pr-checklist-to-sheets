@@ -138,6 +138,18 @@ function buildSideBySideRows(
   return rows;
 }
 
+// Member color palette (soft, professional colors)
+const MEMBER_COLORS = [
+  { red: 0.85, green: 0.92, blue: 0.98 }, // Light blue
+  { red: 0.98, green: 0.91, blue: 0.85 }, // Light orange
+  { red: 0.88, green: 0.94, blue: 0.88 }, // Light green
+  { red: 0.95, green: 0.88, blue: 0.95 }, // Light purple
+  { red: 0.98, green: 0.95, blue: 0.85 }, // Light yellow
+  { red: 0.92, green: 0.88, blue: 0.95 }, // Light indigo
+];
+
+const HEADER_COLOR = { red: 0.95, green: 0.95, blue: 0.95 }; // Light gray
+
 async function appendToSheet(
   sheetId: string,
   rangeStart: string,
@@ -193,40 +205,251 @@ async function appendToSheet(
     requestBody: { values },
   });
 
-  // Add checkbox data validation to checkbox columns (every 4th column starting from 0)
-  // Skip header rows (row 0 and 1), start from row 2 (index 2)
-  if (createdSheetId !== undefined && values.length > 2) {
-    const checkboxRequests = [];
-    const dataRowCount = values.length - 2; // Exclude 2 header rows
+  // Apply styling and checkboxes
+  if (createdSheetId !== undefined && values.length > 0) {
+    const totalColumns = memberCount * 4;
+    const totalRows = values.length;
+    const dataRowCount = Math.max(0, values.length - 2);
+    const requests: object[] = [];
 
+    // 1. Freeze header rows (first 2 rows)
+    requests.push({
+      updateSheetProperties: {
+        properties: {
+          sheetId: createdSheetId,
+          gridProperties: {
+            frozenRowCount: 2,
+          },
+        },
+        fields: "gridProperties.frozenRowCount",
+      },
+    });
+
+    // 2. Style member name row (row 0) - colored backgrounds per member
     for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
-      const columnIndex = memberIndex * 4; // Each member has 4 columns, checkbox is the first
+      const color = MEMBER_COLORS[memberIndex % MEMBER_COLORS.length];
+      const startCol = memberIndex * 4;
 
-      checkboxRequests.push({
-        setDataValidation: {
+      requests.push({
+        repeatCell: {
           range: {
             sheetId: createdSheetId,
-            startRowIndex: 2, // Skip 2 header rows
-            endRowIndex: 2 + dataRowCount,
-            startColumnIndex: columnIndex,
-            endColumnIndex: columnIndex + 1,
+            startRowIndex: 0,
+            endRowIndex: 1,
+            startColumnIndex: startCol,
+            endColumnIndex: startCol + 4,
           },
-          rule: {
-            condition: {
-              type: "BOOLEAN",
+          cell: {
+            userEnteredFormat: {
+              backgroundColor: color,
+              textFormat: { bold: true, fontSize: 11 },
+              horizontalAlignment: "CENTER",
+              verticalAlignment: "MIDDLE",
             },
-            showCustomUi: true,
           },
+          fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)",
         },
       });
     }
 
-    if (checkboxRequests.length > 0) {
+    // 3. Style column header row (row 1) - gray background, bold
+    requests.push({
+      repeatCell: {
+        range: {
+          sheetId: createdSheetId,
+          startRowIndex: 1,
+          endRowIndex: 2,
+          startColumnIndex: 0,
+          endColumnIndex: totalColumns,
+        },
+        cell: {
+          userEnteredFormat: {
+            backgroundColor: HEADER_COLOR,
+            textFormat: { bold: true, fontSize: 10 },
+            horizontalAlignment: "CENTER",
+            verticalAlignment: "MIDDLE",
+          },
+        },
+        fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)",
+      },
+    });
+
+    // 4. Style data rows - center align checkbox column, add light borders
+    if (dataRowCount > 0) {
+      // Center align all data cells
+      requests.push({
+        repeatCell: {
+          range: {
+            sheetId: createdSheetId,
+            startRowIndex: 2,
+            endRowIndex: totalRows,
+            startColumnIndex: 0,
+            endColumnIndex: totalColumns,
+          },
+          cell: {
+            userEnteredFormat: {
+              verticalAlignment: "MIDDLE",
+            },
+          },
+          fields: "userEnteredFormat(verticalAlignment)",
+        },
+      });
+
+      // Add checkboxes to checkbox columns
+      for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
+        const columnIndex = memberIndex * 4;
+
+        requests.push({
+          setDataValidation: {
+            range: {
+              sheetId: createdSheetId,
+              startRowIndex: 2,
+              endRowIndex: 2 + dataRowCount,
+              startColumnIndex: columnIndex,
+              endColumnIndex: columnIndex + 1,
+            },
+            rule: {
+              condition: { type: "BOOLEAN" },
+              showCustomUi: true,
+            },
+          },
+        });
+
+        // Center align checkbox column
+        requests.push({
+          repeatCell: {
+            range: {
+              sheetId: createdSheetId,
+              startRowIndex: 2,
+              endRowIndex: totalRows,
+              startColumnIndex: columnIndex,
+              endColumnIndex: columnIndex + 1,
+            },
+            cell: {
+              userEnteredFormat: {
+                horizontalAlignment: "CENTER",
+              },
+            },
+            fields: "userEnteredFormat(horizontalAlignment)",
+          },
+        });
+      }
+    }
+
+    // 5. Add borders around each member's section
+    for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
+      const startCol = memberIndex * 4;
+      const borderStyle = {
+        style: "SOLID",
+        width: 1,
+        color: { red: 0.8, green: 0.8, blue: 0.8 },
+      };
+      const thickBorder = {
+        style: "SOLID_MEDIUM",
+        width: 2,
+        color: { red: 0.6, green: 0.6, blue: 0.6 },
+      };
+
+      // Outer border for member section
+      requests.push({
+        updateBorders: {
+          range: {
+            sheetId: createdSheetId,
+            startRowIndex: 0,
+            endRowIndex: totalRows,
+            startColumnIndex: startCol,
+            endColumnIndex: startCol + 4,
+          },
+          top: thickBorder,
+          bottom: thickBorder,
+          left: thickBorder,
+          right: thickBorder,
+          innerHorizontal: borderStyle,
+          innerVertical: borderStyle,
+        },
+      });
+    }
+
+    // 6. Set column widths
+    for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
+      const startCol = memberIndex * 4;
+
+      // Checkbox column - narrow
+      requests.push({
+        updateDimensionProperties: {
+          range: {
+            sheetId: createdSheetId,
+            dimension: "COLUMNS",
+            startIndex: startCol,
+            endIndex: startCol + 1,
+          },
+          properties: { pixelSize: 40 },
+          fields: "pixelSize",
+        },
+      });
+
+      // PR URL column - wide
+      requests.push({
+        updateDimensionProperties: {
+          range: {
+            sheetId: createdSheetId,
+            dimension: "COLUMNS",
+            startIndex: startCol + 1,
+            endIndex: startCol + 2,
+          },
+          properties: { pixelSize: 280 },
+          fields: "pixelSize",
+        },
+      });
+
+      // Owner column - medium
+      requests.push({
+        updateDimensionProperties: {
+          range: {
+            sheetId: createdSheetId,
+            dimension: "COLUMNS",
+            startIndex: startCol + 2,
+            endIndex: startCol + 3,
+          },
+          properties: { pixelSize: 100 },
+          fields: "pixelSize",
+        },
+      });
+
+      // Checklist content column - wide
+      requests.push({
+        updateDimensionProperties: {
+          range: {
+            sheetId: createdSheetId,
+            dimension: "COLUMNS",
+            startIndex: startCol + 3,
+            endIndex: startCol + 4,
+          },
+          properties: { pixelSize: 300 },
+          fields: "pixelSize",
+        },
+      });
+    }
+
+    // 7. Set row height for header rows
+    requests.push({
+      updateDimensionProperties: {
+        range: {
+          sheetId: createdSheetId,
+          dimension: "ROWS",
+          startIndex: 0,
+          endIndex: 2,
+        },
+        properties: { pixelSize: 32 },
+        fields: "pixelSize",
+      },
+    });
+
+    // Execute all formatting requests
+    if (requests.length > 0) {
       await sheets.spreadsheets.batchUpdate({
         spreadsheetId: sheetId,
-        requestBody: {
-          requests: checkboxRequests,
-        },
+        requestBody: { requests },
       });
     }
   }
