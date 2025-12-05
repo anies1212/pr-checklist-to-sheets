@@ -55,6 +55,8 @@ The action generates a table with the following structure:
 - The checkbox column uses Google Sheets checkboxes (FALSE by default)
 - When all checkboxes are checked, "✓ Done!" appears next to the member name and the header turns green
 
+<img width="1286" height="317" alt="スクリーンショット 2025-12-05 22 47 08" src="https://github.com/user-attachments/assets/99bef070-9c82-46f2-b690-6e1a9acc5c8b" />
+
 ## Inputs
 
 - `google-service-account-key` (required): Base64-encoded service account JSON.
