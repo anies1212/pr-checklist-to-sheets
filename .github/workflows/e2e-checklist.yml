@@ -23,6 +23,8 @@ jobs:
         run: npm run build
       - name: Sync PR checklist to demo sheet
         uses: ./
+        env:
+          GITHUB_TOKEN: ${{ secrets.PR_CHECKLIST_TO_SHEETS_SECRETS }}
         with:
           google-service-account-key: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
           sheet-id: "1lRArNs_BEebnOVl3qpPt94kHM-qZeQIOfcbgRZSXpF4"
