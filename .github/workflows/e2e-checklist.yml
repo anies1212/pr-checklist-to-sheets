@@ -21,6 +21,15 @@ jobs:
         run: npm install
       - name: Build local action
         run: npm run build
+      - name: Debug GITHUB_TOKEN presence
+        run: |
+          if [ -z "${GITHUB_TOKEN}" ]; then
+            echo "GITHUB_TOKEN is EMPTY"
+          else
+            echo "GITHUB_TOKEN is present (length=${#GITHUB_TOKEN})"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.PR_CHECKLIST_TO_SHEETS_SECRETS }}
       - name: Sync PR checklist to demo sheet
         uses: ./
         env:
