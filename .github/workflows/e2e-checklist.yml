@@ -30,4 +30,3 @@ jobs:
           sheet-id: "1lRArNs_BEebnOVl3qpPt94kHM-qZeQIOfcbgRZSXpF4"
           sheet-range: "A1"
           trigger-label: "e2e-checklist"
-          reviewers-config-path: "config/reviewers.json"
