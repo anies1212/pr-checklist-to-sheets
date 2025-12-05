@@ -75,7 +75,7 @@ jobs:
     if: github.event.action != 'labeled' || github.event.label.name == 'export-checklist'
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/pr-checklist-to-sheets
+      - uses: anies1212/pr-checklist-to-sheets@main
         with:
           google-service-account-key: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
           sheet-id: ${{ secrets.SHEET_ID }}
