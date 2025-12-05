@@ -2,7 +2,7 @@ name: E2E checklist sync
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, labeled]
+    types: [labeled]
 
 permissions:
   contents: read
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   sync:
-    if: github.event.action != 'labeled' || github.event.label.name == 'e2e-checklist'
+    if: github.event.label.name == 'e2e-checklist'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
