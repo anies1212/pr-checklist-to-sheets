@@ -445,7 +445,7 @@ async function appendToSheet(
         },
       });
 
-      // PR URL column - wide
+      // PR URL column - same width as owner
       requests.push({
         updateDimensionProperties: {
           range: {
@@ -454,7 +454,7 @@ async function appendToSheet(
             startIndex: startCol + 1,
             endIndex: startCol + 2,
           },
-          properties: { pixelSize: 280 },
+          properties: { pixelSize: 100 },
           fields: "pixelSize",
         },
       });
