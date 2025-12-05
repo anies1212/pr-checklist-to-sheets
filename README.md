@@ -30,8 +30,8 @@ The action reads `reviewerId` from config; display names are used as column head
 ```json
 {
   "reviewers": [
-    { "id": "seina", "displayName": "せいな" },
-    { "id": "wakahara", "displayName": "わかはら" }
+    { "id": "john", "displayName": "John" },
+    { "id": "daniel", "displayName": "Daniel" }
   ]
 }
 ```
@@ -101,11 +101,11 @@ Example PR body for the demo:
 ```
 ## チェックリスト
 ```checklist-seina
-- [x] API レスポンス確認
-- [ ] UI 動作確認
+- [x] API response verification
+- [ ] UI behavior verification
 ```
 ```checklist-wakahara
-- [ ] テストケース追加
+- [ ] Add test cases
 ```
 ```
 
