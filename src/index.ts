@@ -101,16 +101,34 @@ function parseChecklistBlock(
   return items;
 }
 
+// Convert column index to Excel-style column letter (0 -> A, 1 -> B, 26 -> AA, etc.)
+function columnToLetter(column: number): string {
+  let letter = "";
+  let temp = column;
+  while (temp >= 0) {
+    letter = String.fromCharCode((temp % 26) + 65) + letter;
+    temp = Math.floor(temp / 26) - 1;
+  }
+  return letter;
+}
+
 function buildSideBySideRows(
   items: ChecklistItem[],
   members: Member[]
 ): (string | boolean)[][] {
   const longest = items.length;
+  const dataStartRow = 3; // Row 3 in 1-indexed (after 2 header rows)
+  const dataEndRow = dataStartRow + longest - 1;
 
-  // Row 1: Member display names (with empty cells for spacing)
+  // Row 1: Member display names with completion status formula
   const memberNameRow: (string | boolean)[] = [];
-  members.forEach((member) => {
-    memberNameRow.push(member.displayName || member.id, "", "", "");
+  members.forEach((member, memberIndex) => {
+    const checkboxCol = columnToLetter(memberIndex * 4); // Checkbox column letter
+    // Formula: IF all checkboxes are TRUE, show "✓ 完了!", else show member name
+    const formula = longest > 0
+      ? `=IF(COUNTIF(${checkboxCol}${dataStartRow}:${checkboxCol}${dataEndRow},TRUE)=${longest},"✓ 完了！","${member.displayName || member.id}")`
+      : member.displayName || member.id;
+    memberNameRow.push(formula, "", "", "");
   });
 
   // Row 2: Column headers for each member
@@ -225,7 +243,7 @@ async function appendToSheet(
       },
     });
 
-    // 2. Style member name row (row 0) - colored backgrounds per member
+    // 2. Style member name row (row 0) - colored backgrounds per member, LEFT aligned
     for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
       const color = MEMBER_COLORS[memberIndex % MEMBER_COLORS.length];
       const startCol = memberIndex * 4;
@@ -243,13 +261,52 @@ async function appendToSheet(
             userEnteredFormat: {
               backgroundColor: color,
               textFormat: { bold: true, fontSize: 11 },
-              horizontalAlignment: "CENTER",
+              horizontalAlignment: "LEFT",
               verticalAlignment: "MIDDLE",
+              padding: { left: 8 },
             },
           },
-          fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)",
+          fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,padding)",
         },
       });
+
+      // Add conditional formatting: green background when all checkboxes are checked
+      const checkboxCol = columnToLetter(startCol);
+      const dataStartRow = 3;
+      const dataEndRow = dataStartRow + dataRowCount - 1;
+
+      if (dataRowCount > 0) {
+        requests.push({
+          addConditionalFormatRule: {
+            rule: {
+              ranges: [
+                {
+                  sheetId: createdSheetId,
+                  startRowIndex: 0,
+                  endRowIndex: 1,
+                  startColumnIndex: startCol,
+                  endColumnIndex: startCol + 4,
+                },
+              ],
+              booleanRule: {
+                condition: {
+                  type: "CUSTOM_FORMULA",
+                  values: [
+                    {
+                      userEnteredValue: `=COUNTIF(${checkboxCol}${dataStartRow}:${checkboxCol}${dataEndRow},TRUE)=${dataRowCount}`,
+                    },
+                  ],
+                },
+                format: {
+                  backgroundColor: { red: 0.72, green: 0.88, blue: 0.72 }, // Light green for completion
+                  textFormat: { bold: true, foregroundColor: { red: 0.15, green: 0.5, blue: 0.15 } },
+                },
+              },
+            },
+            index: 0,
+          },
+        });
+      }
     }
 
     // 3. Style column header row (row 1) - gray background, bold
