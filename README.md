@@ -6,18 +6,18 @@ GitHub Action that reads reviewer-specific checklist blocks from pull requests, 
 
 - Add fenced code blocks per reviewer: ` ```<prefix>-<reviewerId> `.
 - The default prefix is `checklist`. Reviewer IDs come from `config/reviewers.json` (or YAML).
-- Each line: `- [x] コメント本文` (任意で `9月7日 | コメント` のように日付や区切りを含めてもOK。全て note 列に入ります)
+- Each line: `- [x] コメント本文`（日付なしでシンプルに書く）
 
 Example PR body snippet:
 
 ```
 ## チェックリスト
 ```checklist-seina
-- [x] 9月7日 | API レスポンス確認
-- [ ] 9月8日 | UI 動作確認
+- [x] API レスポンス確認
+- [ ] UI 動作確認
 ```
 ```checklist-wakahara
-- [ ] 9月7日 | テストケース追加
+- [ ] テストケース追加
 ```
 ```
 
