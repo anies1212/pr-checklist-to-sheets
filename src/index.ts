@@ -142,7 +142,8 @@ async function appendToSheet(
   sheetId: string,
   rangeStart: string,
   values: (string | boolean)[][],
-  keyB64: string
+  keyB64: string,
+  memberCount: number
 ) {
   const keyJson = Buffer.from(keyB64, "base64").toString("utf8");
   const creds = JSON.parse(keyJson);
@@ -182,6 +183,9 @@ async function appendToSheet(
     },
   });
 
+  const createdSheetId =
+    addSheetResponse.data.replies?.[0]?.addSheet?.properties?.sheetId;
+
   await sheets.spreadsheets.values.update({
     spreadsheetId: sheetId,
     range: `${sheetTitle}!${rangeStart}`,
@@ -189,8 +193,43 @@ async function appendToSheet(
     requestBody: { values },
   });
 
-  const createdSheetId =
-    addSheetResponse.data.replies?.[0]?.addSheet?.properties?.sheetId;
+  // Add checkbox data validation to checkbox columns (every 4th column starting from 0)
+  // Skip header rows (row 0 and 1), start from row 2 (index 2)
+  if (createdSheetId !== undefined && values.length > 2) {
+    const checkboxRequests = [];
+    const dataRowCount = values.length - 2; // Exclude 2 header rows
+
+    for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
+      const columnIndex = memberIndex * 4; // Each member has 4 columns, checkbox is the first
+
+      checkboxRequests.push({
+        setDataValidation: {
+          range: {
+            sheetId: createdSheetId,
+            startRowIndex: 2, // Skip 2 header rows
+            endRowIndex: 2 + dataRowCount,
+            startColumnIndex: columnIndex,
+            endColumnIndex: columnIndex + 1,
+          },
+          rule: {
+            condition: {
+              type: "BOOLEAN",
+            },
+            showCustomUi: true,
+          },
+        },
+      });
+    }
+
+    if (checkboxRequests.length > 0) {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: sheetId,
+        requestBody: {
+          requests: checkboxRequests,
+        },
+      });
+    }
+  }
 
   return { sheetTitle, createdSheetId };
 }
@@ -395,7 +434,8 @@ async function run(): Promise<void> {
       sheetId,
       startCell,
       values,
-      key
+      key,
+      members.length
     );
     core.info(
       `Created sheet "${sheetTitle}" with ${values.length} rows in spreadsheet ${sheetId}`
