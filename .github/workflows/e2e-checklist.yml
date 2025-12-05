@@ -1,0 +1,24 @@
+name: E2E checklist sync
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened, labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  sync:
+    if: github.event.action != 'labeled' || github.event.label.name == 'e2e-checklist'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync PR checklist to demo sheet
+        uses: ./.github/actions/pr-checklist-to-sheets
+        with:
+          google-service-account-key: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          sheet-id: "1lRArNs_BEebnOVl3qpPt94kHM-qZeQIOfcbgRZSXpF4"
+          sheet-range: "A1"
+          trigger-label: "e2e-checklist"
+          reviewers-config-path: "config/reviewers.json"
