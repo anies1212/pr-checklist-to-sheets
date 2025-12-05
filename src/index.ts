@@ -431,7 +431,7 @@ async function appendToSheet(
     for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
       const startCol = memberIndex * 4;
 
-      // Checkbox column - narrow
+      // Checkbox column (also contains member name in header row)
       requests.push({
         updateDimensionProperties: {
           range: {
@@ -440,7 +440,7 @@ async function appendToSheet(
             startIndex: startCol,
             endIndex: startCol + 1,
           },
-          properties: { pixelSize: 40 },
+          properties: { pixelSize: 120 },
           fields: "pixelSize",
         },
       });
