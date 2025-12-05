@@ -111,23 +111,6 @@ jobs:
 - Ensure the service account has edit access to the spreadsheet.
 - Each run creates a new sheet tab (date-named) instead of appending to existing data.
 
-## E2E workflow (demo)
-
-- Workflow: `.github/workflows/e2e-checklist.yml`
-- Trigger: add the label `e2e-checklist` to a PR.
-- Secrets needed: `GOOGLE_SERVICE_ACCOUNT_KEY` (base64 service account JSON that can edit the demo sheet).
-- Sheet used for demo: https://docs.google.com/spreadsheets/d/1lRArNs_BEebnOVl3qpPt94kHM-qZeQIOfcbgRZSXpF4/edit
-
-Example PR body for the demo:
-
-```markdown
-## Checklist
-<!-- checklist -->
-- API response verification
-- UI behavior verification
-<!-- checklist end -->
-```
-
 ## License
 
 MIT. See [LICENSE](LICENSE).
