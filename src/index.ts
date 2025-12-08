@@ -1,7 +1,7 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 
-import { ChecklistItem, PrChecklistSource } from "./types";
+import { ChecklistItem, PrChecklistSource, GoogleAuthConfig } from "./types";
 import { readMembersConfig } from "./config";
 import { parseChecklistBlock, buildSideBySideRows } from "./checklist";
 import { appendToSheet } from "./sheets";
@@ -116,13 +116,55 @@ async function run(): Promise<void> {
     const startCell = sheetRange.includes("!")
       ? sheetRange.split("!")[1] || "A1"
       : sheetRange;
-    const key = core.getInput("google-service-account-key", { required: true });
+
+    // Determine authentication method
+    const serviceAccountKey = core.getInput("google-service-account-key");
+    const workloadIdentityProvider = core.getInput("workload-identity-provider");
+    const serviceAccountEmail = core.getInput("service-account-email");
+    const googleClientId = core.getInput("google-client-id");
+    const googleClientSecret = core.getInput("google-client-secret");
+    const googleRefreshToken = core.getInput("google-refresh-token");
+
+    let authConfig: GoogleAuthConfig;
+
+    if (serviceAccountKey) {
+      // Use service account key authentication
+      authConfig = {
+        type: "service-account",
+        keyBase64: serviceAccountKey,
+      };
+      core.info("Using service account key authentication");
+    } else if (googleClientId && googleClientSecret && googleRefreshToken) {
+      // Use OAuth refresh token authentication
+      authConfig = {
+        type: "oauth",
+        clientId: googleClientId,
+        clientSecret: googleClientSecret,
+        refreshToken: googleRefreshToken,
+      };
+      core.info("Using OAuth refresh token authentication");
+    } else if (workloadIdentityProvider && serviceAccountEmail) {
+      // Use OIDC authentication
+      authConfig = {
+        type: "oidc",
+        workloadIdentityProvider,
+        serviceAccountEmail,
+      };
+      core.info("Using OIDC (Workload Identity Federation) authentication");
+    } else {
+      throw new Error(
+        "Authentication not configured. Provide one of: " +
+          "'google-service-account-key', " +
+          "'google-client-id' + 'google-client-secret' + 'google-refresh-token', or " +
+          "'workload-identity-provider' + 'service-account-email'."
+      );
+    }
 
     const { sheetTitle, createdSheetId } = await appendToSheet(
       sheetId,
       startCell,
       values,
-      key,
+      authConfig,
       members.length
     );
 

@@ -6,8 +6,29 @@ branding:
   icon: "check-circle"
 inputs:
   google-service-account-key:
-    description: "Base64-encoded service account JSON with Sheets access"
-    required: true
+    description: "Base64-encoded service account JSON with Sheets access. Required if not using OIDC authentication."
+    required: false
+    default: ""
+  workload-identity-provider:
+    description: "Workload Identity Provider resource name for OIDC authentication (e.g., projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider)"
+    required: false
+    default: ""
+  service-account-email:
+    description: "Service account email for OIDC authentication (e.g., my-sa@my-project.iam.gserviceaccount.com)"
+    required: false
+    default: ""
+  google-client-id:
+    description: "OAuth 2.0 Client ID for user OAuth authentication"
+    required: false
+    default: ""
+  google-client-secret:
+    description: "OAuth 2.0 Client Secret for user OAuth authentication"
+    required: false
+    default: ""
+  google-refresh-token:
+    description: "OAuth 2.0 Refresh Token obtained from user consent flow"
+    required: false
+    default: ""
   sheet-id:
     description: "Target Google Spreadsheet ID"
     required: true

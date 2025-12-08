@@ -1,5 +1,6 @@
 import { google } from "googleapis";
 import { columnToLetter } from "./checklist";
+import { GoogleAuthConfig } from "./types";
 
 // Member color palette (soft, professional colors)
 const MEMBER_COLORS = [
@@ -13,6 +14,126 @@ const MEMBER_COLORS = [
 
 const HEADER_COLOR = { red: 0.95, green: 0.95, blue: 0.95 }; // Light gray
 
+const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+
+/**
+ * Create an authenticated client based on the auth config
+ */
+async function createAuthClient(
+  authConfig: GoogleAuthConfig
+): Promise<InstanceType<typeof google.auth.JWT> | InstanceType<typeof google.auth.OAuth2>> {
+  if (authConfig.type === "service-account") {
+    const keyJson = Buffer.from(authConfig.keyBase64, "base64").toString("utf8");
+    const creds = JSON.parse(keyJson);
+
+    return new google.auth.JWT({
+      email: creds.client_email,
+      key: creds.private_key,
+      scopes: [SHEETS_SCOPE],
+    });
+  }
+
+  if (authConfig.type === "oauth") {
+    // OAuth authentication using refresh token
+    const { clientId, clientSecret, refreshToken } = authConfig;
+
+    const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
+    oauth2Client.setCredentials({ refresh_token: refreshToken });
+
+    // Refresh the access token
+    const { credentials } = await oauth2Client.refreshAccessToken();
+    oauth2Client.setCredentials(credentials);
+
+    return oauth2Client;
+  }
+
+  // OIDC authentication using Workload Identity Federation
+  const { workloadIdentityProvider, serviceAccountEmail } = authConfig;
+
+  // Get OIDC token from GitHub Actions
+  const idTokenUrl = process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
+  const idTokenRequestToken = process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+
+  if (!idTokenUrl || !idTokenRequestToken) {
+    throw new Error(
+      "OIDC authentication requires ACTIONS_ID_TOKEN_REQUEST_URL and ACTIONS_ID_TOKEN_REQUEST_TOKEN. " +
+        "Make sure your workflow has 'id-token: write' permission."
+    );
+  }
+
+  // Request OIDC token from GitHub with the correct audience
+  const audience = `https://iam.googleapis.com/${workloadIdentityProvider}`;
+  const tokenResponse = await fetch(`${idTokenUrl}&audience=${encodeURIComponent(audience)}`, {
+    headers: {
+      Authorization: `Bearer ${idTokenRequestToken}`,
+      Accept: "application/json",
+    },
+  });
+
+  if (!tokenResponse.ok) {
+    const errorText = await tokenResponse.text();
+    throw new Error(`Failed to get OIDC token from GitHub: ${tokenResponse.status} ${errorText}`);
+  }
+
+  const tokenData = (await tokenResponse.json()) as { value: string };
+  const oidcToken = tokenData.value;
+
+  // Exchange GitHub OIDC token for GCP access token via STS
+  const stsResponse = await fetch("https://sts.googleapis.com/v1/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+      audience,
+      scope: SHEETS_SCOPE,
+      requested_token_type: "urn:ietf:params:oauth:token-type:access_token",
+      subject_token: oidcToken,
+      subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
+    }),
+  });
+
+  if (!stsResponse.ok) {
+    const errorText = await stsResponse.text();
+    throw new Error(`Failed to exchange token with STS: ${stsResponse.status} ${errorText}`);
+  }
+
+  const stsData = (await stsResponse.json()) as { access_token: string };
+  const federatedToken = stsData.access_token;
+
+  // Impersonate service account to get final access token
+  const impersonateResponse = await fetch(
+    `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${serviceAccountEmail}:generateAccessToken`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${federatedToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        scope: [SHEETS_SCOPE],
+      }),
+    }
+  );
+
+  if (!impersonateResponse.ok) {
+    const errorText = await impersonateResponse.text();
+    throw new Error(
+      `Failed to impersonate service account: ${impersonateResponse.status} ${errorText}`
+    );
+  }
+
+  const impersonateData = (await impersonateResponse.json()) as { accessToken: string };
+  const accessToken = impersonateData.accessToken;
+
+  // Create a simple auth client that uses the access token
+  const client = new google.auth.OAuth2();
+  client.setCredentials({ access_token: accessToken });
+
+  return client;
+}
+
 /**
  * Create a new sheet tab and write values with styling
  */
@@ -20,19 +141,12 @@ export async function appendToSheet(
   sheetId: string,
   rangeStart: string,
   values: (string | boolean)[][],
-  keyB64: string,
+  authConfig: GoogleAuthConfig,
   memberCount: number
 ): Promise<{ sheetTitle: string; createdSheetId: number | undefined }> {
-  const keyJson = Buffer.from(keyB64, "base64").toString("utf8");
-  const creds = JSON.parse(keyJson);
+  const client = await createAuthClient(authConfig);
 
-  const client = new google.auth.JWT({
-    email: creds.client_email,
-    key: creds.private_key,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-  });
-
-  const sheets = google.sheets({ version: "v4", auth: client });
+  const sheets = google.sheets({ version: "v4", auth: client as Parameters<typeof google.sheets>[0]["auth"] });
 
   // Generate unique sheet title based on date
   const dateTitle = new Date().toISOString().slice(0, 10);

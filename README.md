@@ -56,7 +56,21 @@ The action generates a table with the following structure:
 
 ## Inputs
 
-- `google-service-account-key` (required): Base64-encoded service account JSON.
+### Authentication (choose one method)
+
+**Option 1: Service Account Key**
+- `google-service-account-key`: Base64-encoded service account JSON.
+
+**Option 2: OAuth Refresh Token** (for organizations that require user-based authentication)
+- `google-client-id`: OAuth 2.0 Client ID
+- `google-client-secret`: OAuth 2.0 Client Secret
+- `google-refresh-token`: Refresh token obtained from user consent flow
+
+**Option 3: OIDC (Workload Identity Federation)**
+- `workload-identity-provider`: Workload Identity Provider resource name (e.g., `projects/123456/locations/global/workloadIdentityPools/my-pool/providers/my-provider`)
+- `service-account-email`: Service account email (e.g., `my-sa@my-project.iam.gserviceaccount.com`)
+
+### Other Inputs
 - `sheet-id` (required): Spreadsheet ID.
 - `sheet-range` (default `A1`): Starting cell within the generated sheet tab (tab name is auto-generated).
 - `checklist-start-marker` (default `<!-- checklist -->`): HTML comment marker for checklist start.
@@ -78,6 +92,8 @@ The action generates a table with the following structure:
 - Posts a link to the spreadsheet tab back to the PR body (idempotent section keyed by the sheet ID).
 
 ## Usage (workflow)
+
+### Option 1: Using Service Account Key
 
 ```yaml
 name: Sync checklist to Sheets
@@ -104,6 +120,124 @@ jobs:
           members-config-path: "config/members.json"
           trigger-label: "export-checklist"
 ```
+
+### Option 2: Using OIDC (Workload Identity Federation)
+
+This method is more secure as it doesn't require storing service account keys as secrets.
+
+```yaml
+name: Sync checklist to Sheets
+on:
+  pull_request_target:
+    types: [labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write  # Required for OIDC
+
+jobs:
+  sync-checklist:
+    runs-on: ubuntu-latest
+    if: github.event.label.name == 'export-checklist'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anies1212/pr-checklist-to-sheets@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          workload-identity-provider: projects/123456789/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service-account-email: sheets-writer@my-project.iam.gserviceaccount.com
+          sheet-id: ${{ secrets.SHEET_ID }}
+          members-config-path: "config/members.json"
+          trigger-label: "export-checklist"
+```
+
+### Option 3: Using OAuth Refresh Token
+
+This method is required when your organization restricts service account access to spreadsheets and requires user-based authentication.
+
+```yaml
+name: Sync checklist to Sheets
+on:
+  pull_request_target:
+    types: [labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  sync-checklist:
+    runs-on: ubuntu-latest
+    if: github.event.label.name == 'export-checklist'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anies1212/pr-checklist-to-sheets@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          google-client-id: ${{ secrets.GOOGLE_CLIENT_ID }}
+          google-client-secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          google-refresh-token: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          sheet-id: ${{ secrets.SHEET_ID }}
+          members-config-path: "config/members.json"
+          trigger-label: "export-checklist"
+```
+
+#### Obtaining OAuth Credentials
+
+1. Get OAuth 2.0 credentials from your Google Workspace administrator:
+   - Client ID (`xxxxx.apps.googleusercontent.com`)
+   - Client Secret
+
+2. Get a refresh token using the included helper script:
+
+   ```bash
+   # Clone and setup this repository
+   git clone https://github.com/anies1212/pr-checklist-to-sheets.git
+   cd pr-checklist-to-sheets
+   npm install
+
+   # Run the token generator
+   GOOGLE_CLIENT_ID=your-client-id GOOGLE_CLIENT_SECRET=your-client-secret npm run get-token
+   ```
+
+   This will:
+   - Open your browser for Google authentication
+   - Ask you to authorize access to Google Sheets
+   - Display the refresh token in your terminal
+
+3. Store the credentials as GitHub Secrets:
+   - `GOOGLE_CLIENT_ID`
+   - `GOOGLE_CLIENT_SECRET`
+   - `GOOGLE_REFRESH_TOKEN`
+
+#### Setting up Workload Identity Federation
+
+1. Create a Workload Identity Pool in GCP:
+   ```bash
+   gcloud iam workload-identity-pools create github-pool \
+     --location="global" \
+     --display-name="GitHub Actions Pool"
+   ```
+
+2. Create a Workload Identity Provider:
+   ```bash
+   gcloud iam workload-identity-pools providers create-oidc github-provider \
+     --location="global" \
+     --workload-identity-pool="github-pool" \
+     --display-name="GitHub Provider" \
+     --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository" \
+     --issuer-uri="https://token.actions.githubusercontent.com"
+   ```
+
+3. Grant the service account permissions to be impersonated:
+   ```bash
+   gcloud iam service-accounts add-iam-policy-binding sheets-writer@my-project.iam.gserviceaccount.com \
+     --role="roles/iam.workloadIdentityUser" \
+     --member="principalSet://iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/github-pool/attribute.repository/YOUR_ORG/YOUR_REPO"
+   ```
 
 ## Notes
 
