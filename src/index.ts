@@ -7,7 +7,8 @@ import { parseChecklistBlock, buildSideBySideRows } from "./checklist";
 import { appendToSheet } from "./sheets";
 import {
   getLatestTagDateIso,
-  fetchMergedPrsSince,
+  getRefDateIso,
+  fetchMergedPrsBetween,
   upsertLinkSection,
 } from "./github";
 
@@ -50,22 +51,38 @@ async function run(): Promise<void> {
     }
     const octokit = github.getOctokit(token);
 
-    // Get latest tag date for PR filtering
-    core.info("Step 3: Finding latest tag...");
-    const latestTagDate = await getLatestTagDateIso(
-      octokit,
-      repo.owner,
-      repo.repo
-    );
-    core.info(`  - Fetching PRs merged since: ${latestTagDate}`);
+    // Get ref inputs for PR filtering
+    const fromRef = core.getInput("from-ref");
+    const toRef = core.getInput("to-ref");
 
-    // Fetch merged PRs since last tag
+    // Determine the "since" date for PR filtering
+    core.info("Step 3: Determining PR date range...");
+    let sinceDate: string;
+    if (fromRef) {
+      core.info(`  - Using from-ref: ${fromRef}`);
+      sinceDate = await getRefDateIso(octokit, repo.owner, repo.repo, fromRef);
+    } else {
+      core.info("  - No from-ref specified, using latest tag...");
+      sinceDate = await getLatestTagDateIso(octokit, repo.owner, repo.repo);
+    }
+    core.info(`  - Fetching PRs merged since: ${sinceDate}`);
+
+    // Determine the "until" date if to-ref is specified
+    let untilDate: string | undefined;
+    if (toRef) {
+      core.info(`  - Using to-ref: ${toRef}`);
+      untilDate = await getRefDateIso(octokit, repo.owner, repo.repo, toRef);
+      core.info(`  - Fetching PRs merged until: ${untilDate}`);
+    }
+
+    // Fetch merged PRs in date range
     core.info("Step 4: Fetching merged PRs...");
-    const mergedPrs = await fetchMergedPrsSince(
+    const mergedPrs = await fetchMergedPrsBetween(
       octokit,
       repo.owner,
       repo.repo,
-      latestTagDate
+      sinceDate,
+      untilDate
     );
     core.info(`  - Found ${mergedPrs.length} merged PRs`);
 

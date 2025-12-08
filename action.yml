@@ -50,6 +50,14 @@ inputs:
   sheet-link-text:
     description: "Custom text for the sheet link added to the PR body"
     default: "Checklist synced to Google Sheets"
+  from-ref:
+    description: "Git ref (commit hash, tag, or branch) to start collecting PRs from. Defaults to the latest tag."
+    required: false
+    default: ""
+  to-ref:
+    description: "Git ref (commit hash, tag, or branch) to collect PRs up to. Defaults to the current PR's head."
+    required: false
+    default: ""
 runs:
   using: "node20"
   main: "dist/index.js"

@@ -392,9 +392,12 @@ function buildDataRowsAlignmentRequest(
         endColumnIndex: totalColumns,
       },
       cell: {
-        userEnteredFormat: { verticalAlignment: "MIDDLE" },
+        userEnteredFormat: {
+          verticalAlignment: "MIDDLE",
+          wrapStrategy: "WRAP",
+        },
       },
-      fields: "userEnteredFormat(verticalAlignment)",
+      fields: "userEnteredFormat(verticalAlignment,wrapStrategy)",
     },
   };
 }

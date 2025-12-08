@@ -66,10 +66,13 @@ The action generates a table with the following structure:
 - `members-config-path` (default `members.yaml`): Path to YAML file containing members list.
 - `append-pr-link` (default `true`): If true, adds a section with the sheet link to the PR body.
 - `sheet-link-text` (default `Checklist synced to Google Sheets`): Custom link label.
+- `from-ref` (optional): Git ref (commit hash, tag, or branch) to start collecting PRs from. Defaults to the latest tag (or last 30 days if no tags exist).
+- `to-ref` (optional): Git ref (commit hash, tag, or branch) to collect PRs up to. Defaults to collecting all PRs until now.
 
 ## Behavior
 
-- Finds the latest tag in the repository and collects every merged PR since that tag, plus the current PR.
+- By default, finds the latest tag in the repository and collects every merged PR since that tag, plus the current PR. If no tags exist, it falls back to the last 30 days.
+- You can override the date range using `from-ref` and `to-ref` inputs to specify exact commit hashes, tags, or branches.
 - For each PR, reads checklist items within the HTML comment markers and captures:
   - PR URL (`github.com/<owner>/<repo>/pull/<number>`)
   - PR author login

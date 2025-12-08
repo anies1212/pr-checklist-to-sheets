@@ -7,6 +7,31 @@ const LINK_SECTION_MARKER = "<!-- checklist-to-sheets -->";
 const DEFAULT_LOOKBACK_DAYS = 30;
 
 /**
+ * Get the date of a git ref (commit hash, tag, or branch)
+ */
+export async function getRefDateIso(
+  octokit: ReturnType<typeof github.getOctokit>,
+  owner: string,
+  repo: string,
+  ref: string
+): Promise<string> {
+  const commit = await octokit.rest.repos.getCommit({
+    owner,
+    repo,
+    ref,
+  });
+
+  const date =
+    commit.data.commit.committer?.date || commit.data.commit.author?.date;
+
+  if (!date) {
+    throw new Error(`Could not resolve date for ref ${ref}`);
+  }
+
+  return new Date(date).toISOString();
+}
+
+/**
  * Get the date of the latest tag in the repository
  */
 export async function getLatestTagDateIso(
@@ -29,42 +54,36 @@ export async function getLatestTagDateIso(
   }
 
   const latestTag = tags[0];
-  const commitSha = latestTag.commit.sha;
-  const commit = await octokit.rest.repos.getCommit({
-    owner,
-    repo,
-    ref: commitSha,
-  });
-
-  const date =
-    commit.data.commit.committer?.date || commit.data.commit.author?.date;
-
-  if (!date) {
-    throw new Error(`Could not resolve date for tag ${latestTag.name}`);
-  }
-
-  return new Date(date).toISOString();
+  core.info(`  - Latest tag: ${latestTag.name}`);
+  return getRefDateIso(octokit, owner, repo, latestTag.commit.sha);
 }
 
 const PARALLEL_BATCH_SIZE = 10;
 
 /**
- * Fetch all merged PRs since a given date
+ * Fetch all merged PRs between two dates
  */
-export async function fetchMergedPrsSince(
+export async function fetchMergedPrsBetween(
   octokit: ReturnType<typeof github.getOctokit>,
   owner: string,
   repo: string,
-  sinceIso: string
+  sinceIso: string,
+  untilIso?: string
 ): Promise<PrChecklistSource[]> {
   const allPrNumbers: number[] = [];
   let page = 1;
   const perPage = 50;
 
+  // Build date range query
+  let dateQuery = `merged:>=${sinceIso}`;
+  if (untilIso) {
+    dateQuery = `merged:${sinceIso}..${untilIso}`;
+  }
+
   // First, collect all PR numbers from search results
   while (true) {
     const search = await octokit.rest.search.issuesAndPullRequests({
-      q: `repo:${owner}/${repo} is:pr is:merged merged:>=${sinceIso}`,
+      q: `repo:${owner}/${repo} is:pr is:merged ${dateQuery}`,
       sort: "updated",
       order: "desc",
       per_page: perPage,
