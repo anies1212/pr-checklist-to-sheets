@@ -1,3 +1,4 @@
+import * as core from "@actions/core";
 import { google } from "googleapis";
 import { columnToLetter } from "./checklist";
 import { GoogleAuthConfig } from "./types";
@@ -23,8 +24,10 @@ async function createAuthClient(
   authConfig: GoogleAuthConfig
 ): Promise<InstanceType<typeof google.auth.JWT> | InstanceType<typeof google.auth.OAuth2>> {
   if (authConfig.type === "service-account") {
+    core.info("    - Parsing service account credentials...");
     const keyJson = Buffer.from(authConfig.keyBase64, "base64").toString("utf8");
     const creds = JSON.parse(keyJson);
+    core.info(`    - Service account email: ${creds.client_email}`);
 
     return new google.auth.JWT({
       email: creds.client_email,
@@ -34,7 +37,7 @@ async function createAuthClient(
   }
 
   if (authConfig.type === "oauth") {
-    // OAuth authentication using refresh token
+    core.info("    - Refreshing OAuth access token...");
     const { clientId, clientSecret, refreshToken } = authConfig;
 
     const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
@@ -43,6 +46,7 @@ async function createAuthClient(
     // Refresh the access token
     const { credentials } = await oauth2Client.refreshAccessToken();
     oauth2Client.setCredentials(credentials);
+    core.info("    - Access token refreshed successfully");
 
     return oauth2Client;
   }
@@ -144,11 +148,13 @@ export async function appendToSheet(
   authConfig: GoogleAuthConfig,
   memberCount: number
 ): Promise<{ sheetTitle: string; createdSheetId: number | undefined }> {
+  core.info("    - Authenticating with Google...");
   const client = await createAuthClient(authConfig);
 
   const sheets = google.sheets({ version: "v4", auth: client as Parameters<typeof google.sheets>[0]["auth"] });
 
   // Generate unique sheet title based on date
+  core.info("    - Fetching spreadsheet metadata...");
   const dateTitle = new Date().toISOString().slice(0, 10);
   const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
   const existingTitles =
@@ -164,6 +170,7 @@ export async function appendToSheet(
   }
 
   // Create new sheet
+  core.info(`    - Creating new sheet tab: "${sheetTitle}"...`);
   const addSheetResponse = await sheets.spreadsheets.batchUpdate({
     spreadsheetId: sheetId,
     requestBody: {
@@ -179,17 +186,21 @@ export async function appendToSheet(
 
   const createdSheetId =
     addSheetResponse.data.replies?.[0]?.addSheet?.properties?.sheetId ?? undefined;
+  core.info(`    - Sheet tab created (gid: ${createdSheetId})`);
 
   // Write values
+  core.info(`    - Writing ${values.length} rows of data...`);
   await sheets.spreadsheets.values.update({
     spreadsheetId: sheetId,
     range: `${sheetTitle}!${rangeStart}`,
     valueInputOption: "USER_ENTERED",
     requestBody: { values },
   });
+  core.info("    - Data written successfully");
 
   // Apply styling
   if (createdSheetId != null && values.length > 0) {
+    core.info("    - Applying formatting and styling...");
     const requests = buildFormattingRequests(createdSheetId, values, memberCount);
 
     if (requests.length > 0) {
@@ -197,6 +208,7 @@ export async function appendToSheet(
         spreadsheetId: sheetId,
         requestBody: { requests },
       });
+      core.info(`    - Applied ${requests.length} formatting rules`);
     }
   }
 

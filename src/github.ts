@@ -4,6 +4,8 @@ import { PrChecklistSource } from "./types";
 
 const LINK_SECTION_MARKER = "<!-- checklist-to-sheets -->";
 
+const DEFAULT_LOOKBACK_DAYS = 30;
+
 /**
  * Get the date of the latest tag in the repository
  */
@@ -19,8 +21,11 @@ export async function getLatestTagDateIso(
   });
 
   if (!tags.length) {
-    core.info("No tags found; fetching all PRs");
-    return new Date(0).toISOString();
+    // No tags found, fall back to last N days
+    const fallbackDate = new Date();
+    fallbackDate.setDate(fallbackDate.getDate() - DEFAULT_LOOKBACK_DAYS);
+    core.info(`No tags found; fetching PRs from last ${DEFAULT_LOOKBACK_DAYS} days`);
+    return fallbackDate.toISOString();
   }
 
   const latestTag = tags[0];
@@ -41,6 +46,8 @@ export async function getLatestTagDateIso(
   return new Date(date).toISOString();
 }
 
+const PARALLEL_BATCH_SIZE = 10;
+
 /**
  * Fetch all merged PRs since a given date
  */
@@ -50,10 +57,11 @@ export async function fetchMergedPrsSince(
   repo: string,
   sinceIso: string
 ): Promise<PrChecklistSource[]> {
-  const results: PrChecklistSource[] = [];
+  const allPrNumbers: number[] = [];
   let page = 1;
   const perPage = 50;
 
+  // First, collect all PR numbers from search results
   while (true) {
     const search = await octokit.rest.search.issuesAndPullRequests({
       q: `repo:${owner}/${repo} is:pr is:merged merged:>=${sinceIso}`,
@@ -66,40 +74,46 @@ export async function fetchMergedPrsSince(
     const items = search.data.items || [];
     if (!items.length) break;
 
-    for (const item of items) {
-      const prNumber = item.number;
-      const pr = await octokit.rest.pulls.get({
-        owner,
-        repo,
-        pull_number: prNumber,
-      });
-
-      results.push({
-        number: prNumber,
-        body: pr.data.body || "",
-        author: pr.data.user?.login || "",
-        url: pr.data.html_url,
-        mergedAt: pr.data.merged_at,
-      });
-    }
+    allPrNumbers.push(...items.map((item) => item.number));
 
     if (items.length < perPage) break;
     page += 1;
   }
 
-  return results;
-}
+  if (allPrNumbers.length === 0) {
+    return [];
+  }
 
-/**
- * Check if the trigger label is present on the PR
- */
-export function ensureTriggerLabel(
-  triggerLabel: string,
-  labels: { name?: string }[] | undefined
-): boolean {
-  if (!triggerLabel) return true;
-  if (!labels) return false;
-  return labels.some((label) => label.name === triggerLabel);
+  core.info(`Found ${allPrNumbers.length} merged PRs, fetching details in parallel...`);
+
+  // Fetch PR details in parallel batches
+  const results: PrChecklistSource[] = [];
+
+  for (let i = 0; i < allPrNumbers.length; i += PARALLEL_BATCH_SIZE) {
+    const batch = allPrNumbers.slice(i, i + PARALLEL_BATCH_SIZE);
+
+    const batchResults = await Promise.all(
+      batch.map(async (prNumber) => {
+        const pr = await octokit.rest.pulls.get({
+          owner,
+          repo,
+          pull_number: prNumber,
+        });
+
+        return {
+          number: prNumber,
+          body: pr.data.body || "",
+          author: pr.data.user?.login || "",
+          url: pr.data.html_url,
+          mergedAt: pr.data.merged_at,
+        };
+      })
+    );
+
+    results.push(...batchResults);
+  }
+
+  return results;
 }
 
 /**
