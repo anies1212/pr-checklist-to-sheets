@@ -8,7 +8,6 @@ import { appendToSheet } from "./sheets";
 import {
   getLatestTagDateIso,
   fetchMergedPrsSince,
-  ensureTriggerLabel,
   upsertLinkSection,
 } from "./github";
 
@@ -22,15 +21,6 @@ async function run(): Promise<void> {
       return;
     }
 
-    // Check trigger label
-    const triggerLabel = core.getInput("trigger-label");
-    if (!ensureTriggerLabel(triggerLabel, pr.labels)) {
-      core.info(
-        `Trigger label "${triggerLabel}" not present on PR #${pr.number}, skipping`
-      );
-      return;
-    }
-
     // Read inputs
     const body = pr.body ?? "";
     const checklistStartMarker =
@@ -38,7 +28,7 @@ async function run(): Promise<void> {
     const checklistEndMarker =
       core.getInput("checklist-end-marker") || "<!-- checklist end -->";
     const membersConfigPath =
-      core.getInput("members-config-path") || "config/members.json";
+      core.getInput("members-config-path") || "members.yaml";
 
     // Load members config
     const members = readMembersConfig(membersConfigPath);

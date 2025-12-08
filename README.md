@@ -18,19 +18,7 @@ Each line starting with `- ` inside the markers will be captured as a checklist 
 
 ## Members config
 
-Create a `config/members.json` (or `.yaml`) file to define team members. Each member gets their own set of columns in the spreadsheet:
-
-```json
-{
-  "members": [
-    { "name": "Alice" },
-    { "name": "Bob" },
-    { "name": "Charlie" }
-  ]
-}
-```
-
-Or in YAML format (`config/members.yaml`):
+Create a `members.yaml` file to define team members. Each member gets their own set of columns in the spreadsheet:
 
 ```yaml
 members:
@@ -75,10 +63,9 @@ The action generates a table with the following structure:
 - `sheet-range` (default `A1`): Starting cell within the generated sheet tab (tab name is auto-generated).
 - `checklist-start-marker` (default `<!-- checklist -->`): HTML comment marker for checklist start.
 - `checklist-end-marker` (default `<!-- checklist end -->`): HTML comment marker for checklist end.
-- `members-config-path` (default `config/members.json`): Path to JSON/YAML file containing members list.
+- `members-config-path` (default `members.yaml`): Path to YAML file containing members list.
 - `append-pr-link` (default `true`): If true, adds a section with the sheet link to the PR body.
 - `sheet-link-text` (default `Checklist synced to Google Sheets`): Custom link label.
-- `trigger-label` (optional): Label name to filter on in the workflow.
 
 ## Behavior
 
@@ -117,8 +104,7 @@ jobs:
         with:
           google-service-account-key: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
           sheet-id: ${{ secrets.SHEET_ID }}
-          members-config-path: "config/members.json"
-          trigger-label: "export-checklist"
+          members-config-path: "members.yaml"
 ```
 
 ### Option 2: Using OIDC (Workload Identity Federation)
@@ -149,8 +135,7 @@ jobs:
           workload-identity-provider: projects/123456789/locations/global/workloadIdentityPools/github-pool/providers/github-provider
           service-account-email: sheets-writer@my-project.iam.gserviceaccount.com
           sheet-id: ${{ secrets.SHEET_ID }}
-          members-config-path: "config/members.json"
-          trigger-label: "export-checklist"
+          members-config-path: "members.yaml"
 ```
 
 ### Option 3: Using OAuth Refresh Token
@@ -181,8 +166,7 @@ jobs:
           google-client-secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           google-refresh-token: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
           sheet-id: ${{ secrets.SHEET_ID }}
-          members-config-path: "config/members.json"
-          trigger-label: "export-checklist"
+          members-config-path: "members.yaml"
 ```
 
 #### Obtaining OAuth Credentials

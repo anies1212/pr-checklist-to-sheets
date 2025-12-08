@@ -10,14 +10,7 @@ export function readMembersConfig(configPath: string): Member[] {
   }
 
   const content = fs.readFileSync(fullPath, "utf8");
-  const ext = path.extname(fullPath).toLowerCase();
-  let parsed: unknown;
-
-  if (ext === ".yml" || ext === ".yaml") {
-    parsed = yaml.load(content);
-  } else {
-    parsed = JSON.parse(content);
-  }
+  const parsed = yaml.load(content);
 
   if (
     typeof parsed !== "object" ||

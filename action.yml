@@ -42,17 +42,14 @@ inputs:
     description: "HTML comment marker for checklist end (default: <!-- checklist end -->)"
     default: "<!-- checklist end -->"
   members-config-path:
-    description: "Path to JSON/YAML file containing members list"
-    default: "config/members.json"
+    description: "Path to YAML file containing members list"
+    default: "members.yaml"
   append-pr-link:
     description: "Whether to append sheet link into PR body (true/false)"
     default: "true"
   sheet-link-text:
     description: "Custom text for the sheet link added to the PR body"
     default: "Checklist synced to Google Sheets"
-  trigger-label:
-    description: "Label name that should trigger the sync (checked in the workflow using this action)"
-    default: ""
 runs:
   using: "node20"
   main: "dist/index.js"
